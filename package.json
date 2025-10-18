@@ -1,0 +1,65 @@
+{
+  "name": "artboard",
+  "version": "1.0.0",
+  "description": "Capture, remix, and share creative ideas effortlessly with Artboard Studio.",
+  "author": "Artboard Team",
+  "type": "module",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "dev": "rm -rf dist && bun run build && electron .",
+    "build": "rm -rf dist && bun run build:main && bun run build:renderer",
+    "build:main": "bun build src/main.ts --outfile=dist/main.cjs --target=node --format=cjs --external electron --external electron-screenshots && bun build src/preload.ts --outfile=dist/preload.cjs --target=node --format=cjs --external electron",
+    "build:renderer": "rm -rf dist/renderer && bun run browser:bundle && bun build src/renderer/index.html src/renderer/asset-viewer.html --outdir=dist/renderer --target=browser --splitting",
+    "browser:bundle": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm",
+    "browser:watch": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm --watch --no-clear-screen",
+    "start": "electron .",
+    "electron:run": "bun run build && electron .",
+    "pack:linux": "rm -rf dist && bun run build && electron-builder --linux AppImage",
+    "pack:win": "rm -rf dist && bun run build && electron-builder --win nsis --x64",
+    "pack:mac": "rm -rf dist && bun run build && electron-builder --mac zip --x64",
+    "pack:all": "rm -rf dist && bun run build && electron-builder --linux AppImage --win nsis --mac zip",
+    "pack:dir": "rm -rf dist && bun run build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.frosty.artboard",
+    "files": [
+      "dist",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Graphics",
+      "icon": "assets/icons"
+    },
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "assets/icons/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icons/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.7.2",
+    "electron": "^38.2.2",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "electron-screenshots": "^0.5.27",
+    "fabric": "^6.7.1"
+  }
+}

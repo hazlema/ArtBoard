@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asset Viewer</title>
+    <link rel="stylesheet" href="./asset-viewer.css" />
+  </head>
+  <body>
+    <div id="viewer" class="viewer" data-loading="true">
+      <main class="viewer__preview">
+        <div class="viewer__image-frame">
+          <img id="asset-image" alt="" />
+          <div
+            id="crop-overlay"
+            class="crop-overlay"
+            aria-hidden="true"
+            hidden
+          >
+            <div
+              id="crop-selection"
+              class="crop-overlay__selection"
+              hidden
+            >
+              <span
+                id="crop-selection-label"
+                class="crop-overlay__label"
+              >
+              </span>
+              <div class="crop-overlay__handle crop-overlay__handle--nw" data-handle="nw"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--n" data-handle="n"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--ne" data-handle="ne"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--e" data-handle="e"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--se" data-handle="se"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--s" data-handle="s"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--sw" data-handle="sw"></div>
+              <div class="crop-overlay__handle crop-overlay__handle--w" data-handle="w"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <aside class="viewer__details">
+        <header class="viewer__header">
+          <h1 id="asset-name">Asset</h1>
+          <p id="asset-path" class="viewer__subheading"></p>
+        </header>
+        <section class="viewer__meta">
+          <h2>Details</h2>
+          <dl>
+            <div>
+              <dt>Format</dt>
+              <dd id="meta-format">—</dd>
+            </div>
+            <div>
+              <dt>Dimensions</dt>
+              <dd id="meta-dimensions">—</dd>
+            </div>
+            <div>
+              <dt>File Size</dt>
+              <dd id="meta-size">—</dd>
+            </div>
+            <div>
+              <dt>Workspace</dt>
+              <dd id="meta-workspace">—</dd>
+            </div>
+            <div>
+              <dt>Relative Path</dt>
+              <dd id="meta-relative">—</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd id="meta-updated">—</dd>
+            </div>
+          </dl>
+        </section>
+        <section class="viewer__actions">
+          <button id="action-copy" type="button">Copy to Clipboard</button>
+          <button id="action-save-as" type="button">Save As…</button>
+          <button id="action-resize" type="button">Resize…</button>
+          <button id="action-crop" type="button">Crop Selection…</button>
+          <output id="action-feedback" role="status" aria-live="polite"></output>
+        </section>
+        <section id="crop-panel" class="viewer__panel hidden">
+          <h3>Crop</h3>
+          <p class="crop-panel__intro">
+            Drag on the image to select the area to keep. Adjust using the handles, then apply the crop.
+          </p>
+          <div class="crop-panel__actions">
+            <button id="crop-apply" type="button">Apply Crop</button>
+            <button type="button" class="secondary" data-close-panel="crop">
+              Cancel
+            </button>
+          </div>
+          <details class="crop-panel__details">
+            <summary>Precise input</summary>
+            <form id="crop-form">
+              <div class="fields">
+                <label>
+                  X
+                  <input id="crop-x" type="number" min="0" value="0" required />
+                </label>
+                <label>
+                  Y
+                  <input id="crop-y" type="number" min="0" value="0" required />
+                </label>
+              </div>
+              <div class="fields">
+                <label>
+                  Width
+                  <input id="crop-width" type="number" min="1" required />
+                </label>
+                <label>
+                  Height
+                  <input id="crop-height" type="number" min="1" required />
+                </label>
+              </div>
+              <button type="submit">Apply Precise Crop</button>
+            </form>
+          </details>
+        </section>
+      </aside>
+    </div>
+    <dialog id="save-as-modal" class="viewer-modal">
+      <form id="convert-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Save As</h3>
+        <label>
+          Target Format
+          <select id="convert-format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="webp">WebP</option>
+          </select>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="save-as">
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="resize-modal" class="viewer-modal">
+      <form id="resize-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Resize</h3>
+        <div class="fields">
+          <label>
+            Width (px)
+            <input id="resize-width" type="number" min="1" required />
+          </label>
+          <label>
+            Height (px)
+            <input id="resize-height" type="number" min="1" required />
+          </label>
+        </div>
+        <label class="checkbox">
+          <input id="resize-lock-aspect" type="checkbox" checked />
+          <span>Lock aspect ratio</span>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="resize">
+            Cancel
+          </button>
+          <button type="submit">Resize &amp; Save</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="./asset-viewer.ts"></script>
+  </body>
+</html>

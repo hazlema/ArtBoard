@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: artboard:; style-src 'self'; script-src 'self';"
+    />
+    <title>Artboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="stars"></div>
+    <div class="stars2"></div>
+    <div id="app">
+      <main class="content">
+        <canvas id="artboard"></canvas>
+      </main>
+
+      <footer class="app-footer">
+        <div class="footer-left">
+          <div class="footer-item footer-item--brand">
+            <span class="app-name">ArtBoard v1</span>
+          </div>
+
+          <div class="footer-item footer-dropdown" data-footer-dropdown>
+            <button
+              id="workspace-menu-toggle"
+              class="footer-trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="indicator"></span>
+              <span id="active-workspace-label" class="footer-label">Workspace</span>
+            </button>
+            <div id="workspace-menu" class="footer-menu" role="menu">
+              <ul id="workspace-list" class="menu-list"></ul>
+              <div class="menu-sep"></div>
+              <button id="workspace-create-panel" class="menu-item" type="button">
+                New Workspace
+              </button>
+              <button id="open-settings-from-panel" class="menu-item" type="button">
+                Manage Workspaces
+              </button>
+            </div>
+          </div>
+
+          <div class="footer-item footer-dropdown" data-footer-dropdown>
+            <button
+              id="page-menu-toggle"
+              class="footer-trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="indicator"></span>
+              <span id="page-indicator" class="footer-label">Page 1</span>
+            </button>
+            <div id="page-menu" class="footer-menu" role="menu">
+              <ul id="page-list" class="menu-list"></ul>
+              <div class="menu-sep"></div>
+              <button id="page-nav-back" class="menu-item" type="button">Previous Page</button>
+              <button id="page-nav-forward" class="menu-item" type="button">Next Page</button>
+              <div class="menu-sep"></div>
+              <button id="page-create" class="menu-item" type="button">New Page</button>
+            </div>
+          </div>
+
+          <div class="footer-item footer-dropdown" data-footer-dropdown>
+            <button
+              id="zoom-menu-toggle"
+              class="footer-trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <span class="indicator"></span>
+              <span id="zoom-indicator" class="footer-label">100%</span>
+            </button>
+            <div id="zoom-menu" class="footer-menu" role="menu">
+              <button class="menu-item" type="button" data-zoom="0.25">Zoom 25%</button>
+              <button class="menu-item" type="button" data-zoom="0.5">Zoom 50%</button>
+              <button class="menu-item" type="button" data-zoom="0.75">Zoom 75%</button>
+              <button class="menu-item" type="button" data-zoom="1">Zoom 100%</button>
+              <button class="menu-item" type="button" data-zoom="2">Zoom 200%</button>
+              <div class="menu-sep"></div>
+              <button class="menu-item" type="button" data-zoom="fit">Fit to Screen</button>
+              <button class="menu-item" type="button" data-zoom="reset">Reset Zoom</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-right">
+          <span
+            id="capture-feedback"
+            class="footer-status is-hidden"
+            aria-live="polite"
+          ></span>
+          <div class="footer-actions">
+            <button id="capture-screenshot" class="action-btn action-btn--primary" type="button">
+              Capture
+            </button>
+            <button id="open-settings" class="action-btn action-btn--secondary" type="button">
+              Settings
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <div
+      id="drop-progress"
+      class="drop-progress is-hidden"
+      role="status"
+      aria-live="polite"
+      aria-hidden="true"
+    >
+      <div class="drop-progress__card">
+        <span class="drop-progress__icon">⬆️</span>
+        <p id="drop-progress-title" class="drop-progress__title">Importing asset…</p>
+        <p id="drop-progress-subtitle" class="drop-progress__subtitle">
+          Hang tight while we place it on the canvas.
+        </p>
+      </div>
+    </div>
+
+    <div id="canvas-context-menu" class="context-menu" role="menu" tabindex="-1" hidden>
+      <button
+        type="button"
+        data-action="paste"
+        data-visibility="empty"
+        role="menuitem"
+        class="context-menu-item context-menu-item--primary"
+      >
+        <span class="menu-icon">📋</span>
+        <span class="menu-label">Paste</span>
+      </button>
+      <button
+        type="button"
+        data-action="navigate"
+        data-visibility="empty"
+        aria-haspopup="true"
+        role="menuitem"
+        class="context-menu-item"
+      >
+        <span class="menu-icon">🧭</span>
+        <span class="menu-label">Go to Page</span>
+        <span class="menu-arrow">▶</span>
+      </button>
+      <button
+        type="button"
+        data-action="move"
+        data-visibility="selection"
+        aria-haspopup="true"
+        role="menuitem"
+        class="context-menu-item"
+      >
+        <span class="menu-icon">📦</span>
+        <span class="menu-label">Move to Page</span>
+        <span class="menu-arrow">▶</span>
+      </button>
+      <div
+        class="context-menu-divider context-menu-divider--section"
+        data-visibility="selection"
+      ></div>
+      <button
+        type="button"
+        data-action="front"
+        data-visibility="selection"
+        role="menuitem"
+        class="context-menu-item"
+      >
+        <span class="menu-icon">⬆️</span>
+        <span class="menu-label">Bring to Front</span>
+      </button>
+      <button
+        type="button"
+        data-action="back"
+        data-visibility="selection"
+        role="menuitem"
+        class="context-menu-item"
+      >
+        <span class="menu-icon">⬇️</span>
+        <span class="menu-label">Send to Back</span>
+      </button>
+      <div
+        class="context-menu-divider context-menu-divider--section"
+        data-visibility="selection"
+      ></div>
+      <button
+        type="button"
+        data-action="delete"
+        data-visibility="selection"
+        role="menuitem"
+        class="context-menu-item context-menu-item--danger"
+      >
+        <span class="menu-icon">🗑️</span>
+        <span class="menu-label">Delete</span>
+      </button>
+    </div>
+
+    <div
+      id="canvas-context-submenu"
+      class="context-submenu"
+      role="menu"
+      tabindex="-1"
+      hidden
+    >
+      <div class="submenu-header">
+        <span id="context-menu-submenu-title" class="submenu-title">Move to Page</span>
+      </div>
+      <ul id="context-menu-page-list" class="submenu-list" role="none"></ul>
+      <p id="context-menu-submenu-empty" class="submenu-empty" hidden>
+        No other pages available
+      </p>
+    </div>
+
+    <dialog id="workspace-create-modal" class="app-modal">
+      <form id="workspace-create-form" class="app-modal__form" method="dialog">
+        <h3>Create Workspace</h3>
+        <label class="app-modal__field">
+          <span>Name</span>
+          <input
+            id="workspace-create-input"
+            name="workspace"
+            type="text"
+            autocomplete="off"
+            required
+            maxlength="120"
+          />
+        </label>
+        <p id="workspace-create-error" class="app-modal__error" role="alert"></p>
+        <div class="app-modal__actions">
+          <button type="button" class="secondary" id="workspace-create-cancel">Cancel</button>
+          <button type="submit" id="workspace-create-submit">Create</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-modal" class="modal modal--large">
+      <section class="settings">
+        <header class="settings__header">
+          <h2>Settings</h2>
+        </header>
+        <nav class="settings__tabs" role="tablist">
+          <button class="settings__tab is-active" type="button" data-tab="workspaces" aria-selected="true">
+            Workspaces
+          </button>
+          <button class="settings__tab" type="button" data-tab="pages" aria-selected="false">
+            Pages
+          </button>
+          <button class="settings__tab" type="button" data-tab="about" aria-selected="false">
+            About
+          </button>
+        </nav>
+        <div class="settings__panels">
+          <section class="settings__panel is-active" data-panel="workspaces">
+            <header class="panel-header">
+              <h3>Manage Workspaces</h3>
+              <button id="settings-workspace-create" class="icon-btn" type="button">+ New</button>
+            </header>
+            <ul id="settings-workspace-list" class="settings-list"></ul>
+          </section>
+          <section class="settings__panel" data-panel="pages">
+            <header class="panel-header">
+              <h3>Manage Pages</h3>
+              <button id="settings-page-create" class="icon-btn" type="button">+ New</button>
+            </header>
+            <ul id="settings-page-list" class="settings-list"></ul>
+          </section>
+          <section class="settings__panel" data-panel="about">
+            <div class="about">
+              <div class="about__logo">✨</div>
+              <p class="about__version">Version 1.0.0</p>
+              <p class="about__description">
+                Your infinite visual workspace for organizing screenshots, references, and inspiration.
+              </p>
+              <a class="about__link" href="https://github.com/artboard" target="_blank" rel="noreferrer">
+                View on GitHub →
+              </a>
+            </div>
+          </section>
+        </div>
+        <footer class="settings__footer">
+          <button id="settings-close" class="btn btn-primary" type="button">Close</button>
+        </footer>
+      </section>
+    </dialog>
+
+    <script type="module" src="./app.browser.js"></script>
+  </body>
+</html>
