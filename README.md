@@ -4,7 +4,7 @@
 
 Artboard is a powerful desktop application for organizing reference images, screenshots, and web assets into infinite canvases. Built for designers, developers, and creative thinkers who need to capture, arrange, and iterate on visual ideas quickly.
 
-![Artboard](https://via.placeholder.com/800x450/1a1a1a/ffffff?text=Artboard+Screenshot)
+![Artboard](./gfx/screenshot.png)
 
 > **Beta Notice:** Artboard is currently in beta. While fully functional, you may encounter bugs or missing features. Please report any issues to help us improve!
 
