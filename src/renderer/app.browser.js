@@ -8393,9 +8393,17 @@ function resizeCanvas() {
   if (!content)
     return;
   const rect = content.getBoundingClientRect();
+  const vpt = fabricCanvas.viewportTransform?.slice();
+  console.log("resizeCanvas - BEFORE resize, vpt:", vpt);
   fabricCanvas.setWidth(rect.width);
   fabricCanvas.setHeight(rect.height);
+  console.log("resizeCanvas - AFTER setWidth/Height, vpt is now:", fabricCanvas.viewportTransform);
+  if (vpt) {
+    fabricCanvas.setViewportTransform(vpt);
+    console.log("resizeCanvas - RESTORED vpt to:", vpt);
+  }
   fabricCanvas.renderAll();
+  console.log("resizeCanvas - AFTER renderAll, final vpt:", fabricCanvas.viewportTransform);
 }
 function scheduleSave() {
   console.log("scheduleSave called", {
@@ -8955,7 +8963,10 @@ async function handleContextMenuPaste() {
   }
 }
 function captureCanvasState() {
-  return fabricCanvas.toJSON(["artboardMeta"]);
+  const state = fabricCanvas.toJSON(["artboardMeta"]);
+  state.viewportTransform = fabricCanvas.viewportTransform?.slice();
+  console.log("Capturing canvas state with viewportTransform:", state.viewportTransform, "zoom:", fabricCanvas.getZoom());
+  return state;
 }
 function cloneCanvasState(state) {
   return JSON.parse(JSON.stringify(state));
@@ -9012,6 +9023,7 @@ async function loadPageState(pageId) {
   suppressSaves = true;
   try {
     const stored = pageStates[pageId];
+    console.log("Loading page state for", pageId, "viewportTransform in stored:", stored?.viewportTransform);
     if (stored && Array.isArray(stored.objects)) {
       await fabricCanvas.loadFromJSON(stored);
     } else {
@@ -9019,6 +9031,11 @@ async function loadPageState(pageId) {
     }
     fabricCanvas.discardActiveObject();
     fabricCanvas.renderAll();
+    if (stored?.viewportTransform && Array.isArray(stored.viewportTransform)) {
+      console.log("Restoring viewportTransform:", stored.viewportTransform);
+      fabricCanvas.setViewportTransform(stored.viewportTransform);
+      fabricCanvas.requestRenderAll();
+    }
   } catch (error) {
     console.error("Failed to load page state", pageId, error);
     fabricCanvas.clear();
@@ -9413,11 +9430,22 @@ function setCanvasZoom(value, options) {
     const focusPoint = options.point instanceof ot ? options.point : new ot(options.point.x, options.point.y);
     fabricCanvas.zoomToPoint(focusPoint, next);
   } else {
+    const vpt = fabricCanvas.viewportTransform?.slice();
     fabricCanvas.setZoom(next);
-    const transform = fabricCanvas.viewportTransform;
-    if (transform) {
-      transform[4] = 0;
-      transform[5] = 0;
+    if (options?.resetPan && vpt) {
+      const transform = fabricCanvas.viewportTransform;
+      if (transform) {
+        transform[4] = 0;
+        transform[5] = 0;
+      }
+    } else if (vpt) {
+      const transform = fabricCanvas.viewportTransform;
+      if (transform) {
+        transform[0] = next;
+        transform[3] = next;
+        transform[4] = vpt[4];
+        transform[5] = vpt[5];
+      }
     }
   }
   fabricCanvas.renderAll();
@@ -9430,7 +9458,57 @@ function setCanvasZoom(value, options) {
   }
 }
 function resetZoom(options) {
-  setCanvasZoom(1, options);
+  setCanvasZoom(1, { ...options, resetPan: true });
+}
+function fitToScreen(options) {
+  const objects = fabricCanvas.getObjects();
+  if (objects.length === 0) {
+    resetZoom(options);
+    return;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  objects.forEach((obj) => {
+    const bounds = obj.getBoundingRect();
+    minX = Math.min(minX, bounds.left);
+    minY = Math.min(minY, bounds.top);
+    maxX = Math.max(maxX, bounds.left + bounds.width);
+    maxY = Math.max(maxY, bounds.top + bounds.height);
+  });
+  const objectsWidth = maxX - minX;
+  const objectsHeight = maxY - minY;
+  const objectsCenterX = minX + objectsWidth / 2;
+  const objectsCenterY = minY + objectsHeight / 2;
+  const canvasWidth = fabricCanvas.getWidth();
+  const canvasHeight = fabricCanvas.getHeight();
+  const padding = 0.1;
+  const availableWidth = canvasWidth * (1 - padding * 2);
+  const availableHeight = canvasHeight * (1 - padding * 2);
+  const zoomX = availableWidth / objectsWidth;
+  const zoomY = availableHeight / objectsHeight;
+  const zoom = Math.min(zoomX, zoomY);
+  const clampedZoom = clampZoom(zoom);
+  const viewportCenterX = canvasWidth / 2;
+  const viewportCenterY = canvasHeight / 2;
+  const panX = viewportCenterX - objectsCenterX * clampedZoom;
+  const panY = viewportCenterY - objectsCenterY * clampedZoom;
+  currentZoom = clampedZoom;
+  fabricCanvas.setZoom(clampedZoom);
+  const transform = fabricCanvas.viewportTransform;
+  if (transform) {
+    transform[4] = panX;
+    transform[5] = panY;
+  }
+  fabricCanvas.renderAll();
+  updateZoomIndicator();
+  if (options?.persist ?? true) {
+    savePreferences();
+  }
+  if (options?.announce) {
+    setCaptureFeedback(`Fit to screen (${formatZoom(clampedZoom)})`, "info", 1500);
+  }
 }
 function closeActiveDropdown() {
   if (!activeDropdown)
@@ -9843,7 +9921,9 @@ function wireEvents() {
     if (!button)
       return;
     const value = button.dataset.zoom ?? "";
-    if (value === "fit" || value === "reset") {
+    if (value === "fit") {
+      fitToScreen({ announce: true });
+    } else if (value === "reset") {
       resetZoom({ announce: true });
     } else {
       const numeric = Number(value);

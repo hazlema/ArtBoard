@@ -495,9 +495,24 @@ function resizeCanvas() {
   if (!content) return;
 
   const rect = content.getBoundingClientRect();
+
+  // Preserve viewport transform during resize (setWidth/setHeight reset it)
+  const vpt = fabricCanvas.viewportTransform?.slice() as [number, number, number, number, number, number] | undefined;
+  console.log('resizeCanvas - BEFORE resize, vpt:', vpt);
+
   fabricCanvas.setWidth(rect.width);
   fabricCanvas.setHeight(rect.height);
+
+  console.log('resizeCanvas - AFTER setWidth/Height, vpt is now:', fabricCanvas.viewportTransform);
+
+  // Restore viewport transform after resize
+  if (vpt) {
+    fabricCanvas.setViewportTransform(vpt);
+    console.log('resizeCanvas - RESTORED vpt to:', vpt);
+  }
+
   fabricCanvas.renderAll();
+  console.log('resizeCanvas - AFTER renderAll, final vpt:', fabricCanvas.viewportTransform);
 }
 
 function scheduleSave() {
@@ -1182,7 +1197,11 @@ async function handleContextMenuPaste(): Promise<void> {
 }
 
 function captureCanvasState(): CanvasState {
-  return fabricCanvas.toJSON(['artboardMeta']) as CanvasState;
+  const state = fabricCanvas.toJSON(['artboardMeta']) as CanvasState;
+  // Preserve viewport transform (pan/zoom position)
+  state.viewportTransform = fabricCanvas.viewportTransform?.slice() as [number, number, number, number, number, number] | undefined;
+  console.log('Capturing canvas state with viewportTransform:', state.viewportTransform, 'zoom:', fabricCanvas.getZoom());
+  return state;
 }
 
 function cloneCanvasState(state: CanvasState): CanvasState {
@@ -1256,6 +1275,7 @@ async function loadPageState(pageId: string | null): Promise<void> {
   suppressSaves = true;
   try {
     const stored = pageStates[pageId];
+    console.log('Loading page state for', pageId, 'viewportTransform in stored:', stored?.viewportTransform);
     if (stored && Array.isArray(stored.objects)) {
       await fabricCanvas.loadFromJSON(stored);
     } else {
@@ -1263,6 +1283,13 @@ async function loadPageState(pageId: string | null): Promise<void> {
     }
     fabricCanvas.discardActiveObject();
     fabricCanvas.renderAll();
+
+    // Restore viewport transform AFTER render to prevent it from being overwritten
+    if (stored?.viewportTransform && Array.isArray(stored.viewportTransform)) {
+      console.log('Restoring viewportTransform:', stored.viewportTransform);
+      fabricCanvas.setViewportTransform(stored.viewportTransform as [number, number, number, number, number, number]);
+      fabricCanvas.requestRenderAll();
+    }
   } catch (error) {
     console.error('Failed to load page state', pageId, error);
     fabricCanvas.clear();
@@ -1740,7 +1767,7 @@ type ZoomPoint = Point | { x: number; y: number };
 
 function setCanvasZoom(
   value: number,
-  options?: { announce?: boolean; persist?: boolean; point?: ZoomPoint },
+  options?: { announce?: boolean; persist?: boolean; point?: ZoomPoint; resetPan?: boolean },
 ): void {
   const next = clampZoom(value);
   currentZoom = next;
@@ -1751,11 +1778,27 @@ function setCanvasZoom(
       : new Point(options.point.x, options.point.y);
     fabricCanvas.zoomToPoint(focusPoint, next);
   } else {
+    // Preserve viewport transform pan position unless explicitly told to reset
+    const vpt = fabricCanvas.viewportTransform?.slice() as [number, number, number, number, number, number] | undefined;
+
     fabricCanvas.setZoom(next);
-    const transform = fabricCanvas.viewportTransform;
-    if (transform) {
-      transform[4] = 0;
-      transform[5] = 0;
+
+    // Only reset pan if explicitly requested (resetPan: true), otherwise preserve it
+    if (options?.resetPan && vpt) {
+      const transform = fabricCanvas.viewportTransform;
+      if (transform) {
+        transform[4] = 0;
+        transform[5] = 0;
+      }
+    } else if (vpt) {
+      // Restore the pan position, but update the zoom
+      const transform = fabricCanvas.viewportTransform;
+      if (transform) {
+        transform[0] = next; // scale x
+        transform[3] = next; // scale y
+        transform[4] = vpt[4]; // pan x
+        transform[5] = vpt[5]; // pan y
+      }
     }
   }
   fabricCanvas.renderAll();
@@ -1769,7 +1812,77 @@ function setCanvasZoom(
 }
 
 function resetZoom(options?: { announce?: boolean; persist?: boolean }) {
-  setCanvasZoom(1, options);
+  setCanvasZoom(1, { ...options, resetPan: true });
+}
+
+function fitToScreen(options?: { announce?: boolean; persist?: boolean }) {
+  const objects = fabricCanvas.getObjects();
+
+  if (objects.length === 0) {
+    // No objects, just reset zoom
+    resetZoom(options);
+    return;
+  }
+
+  // Calculate bounding box of all objects
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  objects.forEach((obj) => {
+    const bounds = obj.getBoundingRect();
+    minX = Math.min(minX, bounds.left);
+    minY = Math.min(minY, bounds.top);
+    maxX = Math.max(maxX, bounds.left + bounds.width);
+    maxY = Math.max(maxY, bounds.top + bounds.height);
+  });
+
+  const objectsWidth = maxX - minX;
+  const objectsHeight = maxY - minY;
+  const objectsCenterX = minX + objectsWidth / 2;
+  const objectsCenterY = minY + objectsHeight / 2;
+
+  // Get canvas dimensions
+  const canvasWidth = fabricCanvas.getWidth();
+  const canvasHeight = fabricCanvas.getHeight();
+
+  // Add padding (10% on each side)
+  const padding = 0.1;
+  const availableWidth = canvasWidth * (1 - padding * 2);
+  const availableHeight = canvasHeight * (1 - padding * 2);
+
+  // Calculate zoom to fit
+  const zoomX = availableWidth / objectsWidth;
+  const zoomY = availableHeight / objectsHeight;
+  const zoom = Math.min(zoomX, zoomY);
+
+  // Clamp zoom to valid range
+  const clampedZoom = clampZoom(zoom);
+
+  // Calculate pan to center objects
+  const viewportCenterX = canvasWidth / 2;
+  const viewportCenterY = canvasHeight / 2;
+  const panX = viewportCenterX - objectsCenterX * clampedZoom;
+  const panY = viewportCenterY - objectsCenterY * clampedZoom;
+
+  // Apply zoom and pan
+  currentZoom = clampedZoom;
+  fabricCanvas.setZoom(clampedZoom);
+  const transform = fabricCanvas.viewportTransform;
+  if (transform) {
+    transform[4] = panX;
+    transform[5] = panY;
+  }
+  fabricCanvas.renderAll();
+  updateZoomIndicator();
+
+  if (options?.persist ?? true) {
+    savePreferences();
+  }
+  if (options?.announce) {
+    setCaptureFeedback(`Fit to screen (${formatZoom(clampedZoom)})`, 'info', 1500);
+  }
 }
 
 function closeActiveDropdown() {
@@ -2237,7 +2350,9 @@ function wireEvents() {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-zoom]');
     if (!button) return;
     const value = button.dataset.zoom ?? '';
-    if (value === 'fit' || value === 'reset') {
+    if (value === 'fit') {
+      fitToScreen({ announce: true });
+    } else if (value === 'reset') {
       resetZoom({ announce: true });
     } else {
       const numeric = Number(value);
