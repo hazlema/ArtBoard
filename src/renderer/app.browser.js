@@ -8144,6 +8144,9 @@ var captureFeedback = document.querySelector("#capture-feedback");
 var openSettingsButton = document.querySelector("#open-settings");
 var settingsModal = document.querySelector("#settings-modal");
 var settingsClose = document.querySelector("#settings-close");
+var openReferenceButton = document.querySelector("#open-reference");
+var referenceModal = document.querySelector("#reference-modal");
+var referenceClose = document.querySelector("#reference-close");
 var tabButtons = Array.from(document.querySelectorAll(".settings__tab"));
 var panels = Array.from(document.querySelectorAll(".settings__panel"));
 var contextMenu = document.querySelector("#canvas-context-menu");
@@ -9996,6 +9999,18 @@ function wireEvents() {
   });
   settingsClose.addEventListener("click", () => {
     settingsModal.close();
+  });
+  openReferenceButton.addEventListener("click", () => {
+    closeActiveDropdown();
+    referenceModal.showModal();
+  });
+  referenceClose.addEventListener("click", () => {
+    referenceModal.close();
+  });
+  referenceModal.addEventListener("click", (event) => {
+    if (event.target === referenceModal) {
+      referenceModal.close();
+    }
   });
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {

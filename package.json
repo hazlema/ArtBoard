@@ -10,7 +10,7 @@
     "dev": "rm -rf dist && bun run build && electron .",
     "build": "rm -rf dist && bun run build:main && bun run build:renderer",
     "build:main": "bun build src/main.ts --outfile=dist/main.cjs --target=node --format=cjs --external electron --external electron-screenshots && bun build src/preload.ts --outfile=dist/preload.cjs --target=node --format=cjs --external electron",
-    "build:renderer": "rm -rf dist/renderer && bun run browser:bundle && bun build src/renderer/index.html src/renderer/asset-viewer.html --outdir=dist/renderer --target=browser --splitting",
+    "build:renderer": "rm -rf dist/renderer && bun run browser:bundle && bun build src/renderer/index.html src/renderer/asset-viewer.html src/renderer/reference.html --outdir=dist/renderer --target=browser --splitting",
     "browser:bundle": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm",
     "browser:watch": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm --watch --no-clear-screen",
     "start": "electron .",

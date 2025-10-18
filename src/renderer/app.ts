@@ -144,6 +144,12 @@ const settingsModal =
   document.querySelector<HTMLDialogElement>('#settings-modal')!;
 const settingsClose =
   document.querySelector<HTMLButtonElement>('#settings-close')!;
+const openReferenceButton =
+  document.querySelector<HTMLButtonElement>('#open-reference')!;
+const referenceModal =
+  document.querySelector<HTMLDialogElement>('#reference-modal')!;
+const referenceClose =
+  document.querySelector<HTMLButtonElement>('#reference-close')!;
 const tabButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('.settings__tab'),
 );
@@ -2408,6 +2414,21 @@ function wireEvents() {
 
   settingsClose.addEventListener('click', () => {
     settingsModal.close();
+  });
+
+  openReferenceButton.addEventListener('click', () => {
+    closeActiveDropdown();
+    referenceModal.showModal();
+  });
+
+  referenceClose.addEventListener('click', () => {
+    referenceModal.close();
+  });
+
+  referenceModal.addEventListener('click', (event) => {
+    if (event.target === referenceModal) {
+      referenceModal.close();
+    }
   });
 
   tabButtons.forEach((button) => {

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArtBoard - Keyboard & Mouse Reference</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", sans-serif;
+      background: #0A0E27;
+      color: #ffffff;
+      padding: 2rem;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Starfield background */
+    .stars, .stars2 {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .stars {
+      background: transparent;
+      animation: moveStars 120s linear infinite;
+    }
+
+    .stars2 {
+      background: transparent;
+      animation: moveStars 180s linear infinite reverse;
+    }
+
+    .stars::before, .stars2::before {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background-size: 200% 200%;
+      opacity: 0.25;
+    }
+
+    .stars::before {
+      background-image:
+        radial-gradient(2px 2px at 20% 30%, #fff, transparent),
+        radial-gradient(2px 2px at 60% 70%, #fff, transparent),
+        radial-gradient(2px 2px at 10% 80%, #fff, transparent),
+        radial-gradient(1px 1px at 45% 50%, #fff, transparent);
+    }
+
+    .stars2::before {
+      background-image:
+        radial-gradient(2px 2px at 40% 20%, #00F5FF, transparent),
+        radial-gradient(2px 2px at 80% 60%, #FF3E9D, transparent),
+        radial-gradient(1px 1px at 20% 80%, #00F5FF, transparent);
+      opacity: 0.2;
+    }
+
+    @keyframes moveStars {
+      from { transform: translateY(0); }
+      to { transform: translateY(-2000px); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .app-name {
+      font-size: 3rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #FF3E9D 0%, #9D4EDD 25%, #00F5FF 50%, #FF3E9D 75%, #9D4EDD 100%);
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: epicGradientPulse 3s ease infinite;
+      margin-bottom: 0.5rem;
+    }
+
+    @keyframes epicGradientPulse {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .subtitle {
+      color: #A8B2D1;
+      font-size: 1.25rem;
+      font-weight: 500;
+    }
+
+    .section {
+      background: rgba(26, 33, 66, 0.95);
+      backdrop-filter: blur(20px);
+      border: 2px solid rgba(255, 62, 157, 0.2);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 40px rgba(255, 62, 157, 0.3);
+    }
+
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #FF3E9D;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-icon {
+      font-size: 2rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    thead {
+      background: rgba(255, 62, 157, 0.1);
+      border-radius: 0.5rem;
+    }
+
+    th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: #00F5FF;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 2px solid rgba(255, 62, 157, 0.3);
+    }
+
+    th:first-child {
+      border-top-left-radius: 0.5rem;
+    }
+
+    th:last-child {
+      border-top-right-radius: 0.5rem;
+    }
+
+    tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 62, 157, 0.05);
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255, 62, 157, 0.1);
+      color: #ffffff;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .key {
+      display: inline-block;
+      background: rgba(0, 245, 255, 0.15);
+      border: 1px solid rgba(0, 245, 255, 0.4);
+      border-radius: 0.375rem;
+      padding: 0.25rem 0.625rem;
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: #00F5FF;
+      margin: 0.125rem;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0, 245, 255, 0.2);
+    }
+
+    .key + .key {
+      margin-left: 0.25rem;
+    }
+
+    .key-combo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+
+    .key-sep {
+      color: #A8B2D1;
+      font-weight: 600;
+    }
+
+    .description {
+      color: #A8B2D1;
+      line-height: 1.6;
+    }
+
+    .category {
+      display: inline-block;
+      background: linear-gradient(135deg, #FF3E9D 0%, #9D4EDD 100%);
+      padding: 0.25rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .tip {
+      background: rgba(0, 245, 255, 0.1);
+      border-left: 3px solid #00F5FF;
+      padding: 1rem;
+      margin-top: 1.5rem;
+      border-radius: 0.5rem;
+    }
+
+    .tip-title {
+      color: #00F5FF;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tip-content {
+      color: #A8B2D1;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      .app-name {
+        font-size: 2rem;
+      }
+
+      .section {
+        padding: 1rem;
+      }
+
+      table {
+        font-size: 0.875rem;
+      }
+
+      th, td {
+        padding: 0.75rem 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="stars2"></div>
+
+  <div class="container">
+    <header class="header">
+      <h1 class="app-name">ArtBoard v1</h1>
+      <p class="subtitle">Keyboard & Mouse Reference Guide</p>
+    </header>
+
+    <!-- Keyboard Shortcuts Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">⌨️</span>
+        Keyboard Shortcuts
+      </h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Shortcut</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Esc</kbd>
+              </div>
+            </td>
+            <td class="description">Close context menu or modal dialogs</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Delete</kbd>
+                <span class="key-sep">or</span>
+                <kbd class="key">Backspace</kbd>
+              </div>
+            </td>
+            <td class="description">Delete selected objects from canvas</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Page Up</kbd>
+              </div>
+            </td>
+            <td class="description">Zoom in (15% increment)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Page Down</kbd>
+              </div>
+            </td>
+            <td class="description">Zoom out (15% decrement)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Arrow Right</kbd>
+              </div>
+            </td>
+            <td class="description">Navigate to next page</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Arrow Left</kbd>
+              </div>
+            </td>
+            <td class="description">Navigate to previous page</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Arrow Up</kbd>
+                <span class="key-sep">/</span>
+                <kbd class="key">Arrow Down</kbd>
+              </div>
+            </td>
+            <td class="description">Navigate menu items (in context submenu)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Space</kbd>
+                <span class="key-sep">+</span>
+                <span class="description">Drag</span>
+              </div>
+            </td>
+            <td class="description">Pan/scroll the canvas</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Mouse Controls Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">🖱️</span>
+        Mouse Controls
+      </h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Action</th>
+            <th>Function</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Left Click</kbd>
+              </div>
+            </td>
+            <td class="description">Select objects on canvas</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Double Click</kbd>
+              </div>
+            </td>
+            <td class="description">Open image in Asset Viewer window</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Right Click</kbd>
+              </div>
+            </td>
+            <td class="description">Open context menu (paste, navigate, move, layer control, delete)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Middle Click</kbd>
+                <span class="key-sep">+</span>
+                <span class="description">Drag</span>
+              </div>
+            </td>
+            <td class="description">Pan/scroll the canvas</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Scroll Wheel</kbd>
+              </div>
+            </td>
+            <td class="description">Zoom in/out (8% increment, smooth scrolling)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Ctrl</kbd>
+                <span class="key-sep">or</span>
+                <kbd class="key">Cmd</kbd>
+                <span class="key-sep">+</span>
+                <kbd class="key">Scroll Wheel</kbd>
+              </div>
+            </td>
+            <td class="description">Fine zoom control (4% increment)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <kbd class="key">Drag & Drop</kbd>
+              </div>
+            </td>
+            <td class="description">Add images/files to canvas or move objects</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Context Menu Actions Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">📋</span>
+        Context Menu Actions
+      </h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Menu Item</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">📋</span>
+                <strong>Paste</strong>
+              </div>
+            </td>
+            <td class="description">Paste images from clipboard (available when canvas is empty)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">🧭</span>
+                <strong>Go to Page</strong>
+              </div>
+            </td>
+            <td class="description">Navigate to a different page in the workspace</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">📦</span>
+                <strong>Move to Page</strong>
+              </div>
+            </td>
+            <td class="description">Move selected object(s) to another page</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">⬆️</span>
+                <strong>Bring to Front</strong>
+              </div>
+            </td>
+            <td class="description">Move selected object to top layer</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">⬇️</span>
+                <strong>Send to Back</strong>
+              </div>
+            </td>
+            <td class="description">Move selected object to bottom layer</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <span class="section-icon" style="font-size: 1.25rem;">🗑️</span>
+                <strong>Delete</strong>
+              </div>
+            </td>
+            <td class="description">Remove selected object(s) from canvas</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Canvas Interaction Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">🎨</span>
+        Canvas Interaction
+      </h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Action</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Drag File</strong>
+              </div>
+            </td>
+            <td class="description">Drop local image files onto canvas to import</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Drag URL</strong>
+              </div>
+            </td>
+            <td class="description">Drop web image URLs onto canvas to download and import</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Selection Box</strong>
+              </div>
+            </td>
+            <td class="description">Click and drag to select multiple objects (when not on existing object)</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Transform Handles</strong>
+              </div>
+            </td>
+            <td class="description">Drag corners to resize, drag edges to scale, rotate handle to rotate</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Auto-Save</strong>
+              </div>
+            </td>
+            <td class="description">Canvas state automatically saves after changes (500ms debounce)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Footer Bar Controls Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">⚙️</span>
+        Footer Bar Controls
+      </h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Control</th>
+            <th>Function</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Workspace Menu</strong>
+              </div>
+            </td>
+            <td class="description">Switch between workspaces, create new workspace, manage workspaces</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Page Menu</strong>
+              </div>
+            </td>
+            <td class="description">Navigate pages, create new page, go to previous/next page</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Zoom Menu</strong>
+              </div>
+            </td>
+            <td class="description">Quick zoom presets (25%, 50%, 75%, 100%, 200%), fit to screen, reset zoom</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Capture Button</strong>
+              </div>
+            </td>
+            <td class="description">Capture screenshot from any display and add to canvas</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="key-combo">
+                <strong>Settings Button</strong>
+              </div>
+            </td>
+            <td class="description">Open settings modal (manage workspaces, pages, view about info)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Pro Tips Section -->
+    <section class="section">
+      <h2 class="section-title">
+        <span class="section-icon">💡</span>
+        Pro Tips
+      </h2>
+
+      <div class="tip">
+        <div class="tip-title">
+          <span>✨</span>
+          <span>Quick Panning</span>
+        </div>
+        <div class="tip-content">
+          Hold <kbd class="key">Space</kbd> and drag, or use your <kbd class="key">Middle Mouse Button</kbd> to quickly pan around large canvases without switching tools.
+        </div>
+      </div>
+
+      <div class="tip">
+        <div class="tip-title">
+          <span>🔍</span>
+          <span>Precision Zoom</span>
+        </div>
+        <div class="tip-content">
+          Use <kbd class="key">Ctrl/Cmd</kbd> + <kbd class="key">Scroll Wheel</kbd> for fine-grained zoom control (4% increments) when you need precise viewing levels.
+        </div>
+      </div>
+
+      <div class="tip">
+        <div class="tip-title">
+          <span>🎯</span>
+          <span>Multi-Page Workflow</span>
+        </div>
+        <div class="tip-content">
+          Use <kbd class="key">Arrow Left</kbd> and <kbd class="key">Arrow Right</kbd> to quickly navigate between pages. Organize your reference materials across multiple pages for better workflow management.
+        </div>
+      </div>
+
+      <div class="tip">
+        <div class="tip-title">
+          <span>🖼️</span>
+          <span>Asset Viewer</span>
+        </div>
+        <div class="tip-content">
+          <kbd class="key">Double-click</kbd> any image on the canvas to open it in a separate Asset Viewer window where you can copy, save, convert formats, resize, or crop the image.
+        </div>
+      </div>
+
+      <div class="tip">
+        <div class="tip-title">
+          <span>🚀</span>
+          <span>Drag & Drop Everything</span>
+        </div>
+        <div class="tip-content">
+          Drag images from your file system, web browsers, or paste URLs directly onto the canvas. ArtBoard supports local files, remote URLs, and even special handling for Google Images links.
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
