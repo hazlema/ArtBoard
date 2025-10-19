@@ -10529,7 +10529,7 @@ function wireEvents() {
   });
 }
 async function bootstrap() {
-  const versionShort = "1.1.0".split(".").slice(0, 2).join(".");
+  const versionShort = "1.2.0".split(".").slice(0, 2).join(".");
   appNameElement.textContent = `ArtBoard v${versionShort}`;
   const aboutVersionElement = document.getElementById("about-version");
   if (aboutVersionElement) {
