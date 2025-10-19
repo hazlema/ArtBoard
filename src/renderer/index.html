@@ -242,6 +242,29 @@
       </form>
     </dialog>
 
+    <dialog id="page-create-modal" class="app-modal">
+      <form id="page-create-form" class="app-modal__form" method="dialog">
+        <h3>Create Page</h3>
+        <label class="app-modal__field">
+          <span>Name</span>
+          <input
+            id="page-create-input"
+            name="page"
+            type="text"
+            autocomplete="off"
+            required
+            maxlength="120"
+            placeholder="Page 1"
+          />
+        </label>
+        <p id="page-create-error" class="app-modal__error" role="alert"></p>
+        <div class="app-modal__actions">
+          <button type="button" class="secondary" id="page-create-cancel">Cancel</button>
+          <button type="submit" id="page-create-submit">Create</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="settings-modal" class="modal modal--large">
       <section class="settings">
         <header class="settings__header">

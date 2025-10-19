@@ -32,7 +32,15 @@ declare global {
         payload: { id: string; width: number; height: number; lockAspect?: boolean },
       ) => Promise<AssetUpdateResponse>;
       crop: (
-        payload: { id: string; x: number; y: number; width: number; height: number },
+        payload: {
+          id: string;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          data?: Uint8Array | ArrayBuffer;
+          format?: string;
+        },
       ) => Promise<AssetUpdateResponse>;
     };
   }
@@ -380,7 +388,6 @@ function enterCropMode(): void {
   }
 
   cropModeActive = true;
-  viewerRoot.dataset.cropMode = 'true';
   updateCropButton();
   closeModal(saveAsModal);
   closeModal(resizeModal);
@@ -389,7 +396,7 @@ function enterCropMode(): void {
   cropOverlay.setAttribute('aria-hidden', 'false');
   cropSelectionElement.hidden = !activeSelection;
   showCropPanel();
-  setFeedback('Drag on the image to select the crop area. Scroll to navigate large images. Press Enter or click Apply to confirm.', 'info');
+  setFeedback('Drag on the image to select the crop area. Press Enter or click Apply to confirm.', 'info');
   syncCropFormWithSelection(activeSelection);
   requestAnimationFrame(() => {
     refreshCropMetrics();
@@ -408,7 +415,6 @@ function exitCropMode(options?: { resetSelection?: boolean }): void {
   cropDragState = null;
   cropOverlay.classList.remove('is-dragging');
   cropModeActive = false;
-  viewerRoot.dataset.cropMode = 'false';
   updateCropButton();
   cropOverlay.dataset.active = 'false';
   cropOverlay.dataset.hasSelection = 'false';
@@ -440,18 +446,67 @@ async function applyCrop(selectionOverride?: CropSelection): Promise<void> {
       setFeedback('Select an area to crop first', 'error');
       return;
     }
-    const payload = {
-      id: asset.id,
-      x: Math.round(selection.x),
-      y: Math.round(selection.y),
-      width: Math.round(selection.width),
-      height: Math.round(selection.height),
-    };
-    if (payload.width <= 0 || payload.height <= 0) {
+
+    const x = Math.round(selection.x);
+    const y = Math.round(selection.y);
+    const width = Math.round(selection.width);
+    const height = Math.round(selection.height);
+
+    if (width <= 0 || height <= 0) {
       setFeedback('Crop area must be larger than zero', 'error');
       return;
     }
-    const response = await window.assetViewerAPI?.crop(payload);
+
+    const normalizedFormat = canonicalFormat(asset.format);
+    if (!SUPPORTED_RESIZE_FORMATS.has(normalizedFormat)) {
+      setFeedback(`Crop not supported for ${asset.format.toUpperCase()} images`, 'error');
+      return;
+    }
+
+    if (!imageElement.complete || naturalWidth === 0 || naturalHeight === 0) {
+      setFeedback('Image still loading, try again in a moment', 'error');
+      return;
+    }
+
+    // Use Canvas API to crop the image (handles WebP and other formats better than Electron's nativeImage)
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setFeedback('Canvas rendering is not supported in this environment', 'error');
+      return;
+    }
+
+    // Draw the cropped portion of the image
+    context.imageSmoothingEnabled = false; // No smoothing for cropping
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(
+      imageElement,
+      x, y, width, height,  // Source rectangle (crop area)
+      0, 0, width, height   // Destination rectangle (entire canvas)
+    );
+
+    const { mime, quality } = getMimeForFormat(normalizedFormat);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, mime, quality),
+    );
+    if (!blob) {
+      setFeedback('Unable to generate cropped image', 'error');
+      return;
+    }
+    const buffer = new Uint8Array(await blob.arrayBuffer());
+
+    const response = await window.assetViewerAPI?.crop({
+      id: asset.id,
+      x,
+      y,
+      width,
+      height,
+      data: buffer,
+      format: normalizedFormat,
+    });
+
     if (!response?.success || !response.asset) {
       if (response?.error) {
         setFeedback(`Crop failed: ${response.error}`, 'error');

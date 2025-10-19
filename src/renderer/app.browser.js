@@ -8172,6 +8172,12 @@ var workspaceCreateInput = document.querySelector("#workspace-create-input");
 var workspaceCreateSubmit = document.querySelector("#workspace-create-submit");
 var workspaceCreateCancel = document.querySelector("#workspace-create-cancel");
 var workspaceCreateError = document.querySelector("#workspace-create-error");
+var pageCreateModal = document.querySelector("#page-create-modal");
+var pageCreateForm = document.querySelector("#page-create-form");
+var pageCreateInput = document.querySelector("#page-create-input");
+var pageCreateSubmit = document.querySelector("#page-create-submit");
+var pageCreateCancel = document.querySelector("#page-create-cancel");
+var pageCreateError = document.querySelector("#page-create-error");
 var canvasElement = document.querySelector("#artboard");
 var fabricCanvas = new In(canvasElement, {
   backgroundColor: "#1f1f1f",
@@ -9620,13 +9626,39 @@ function renderPages() {
   updateContextMenuMoveAvailability();
   updateContextMenuNavigateAvailability();
 }
-async function createPage() {
+function handlePageCreate() {
+  openPageCreateModal();
+}
+function resetPageCreateModal() {
+  pageCreateForm.reset();
+  pageCreateError.textContent = "";
+  pageCreateInput.disabled = false;
+  pageCreateSubmit.disabled = false;
+  pageCreateCancel.disabled = false;
+  pageCreateInput.placeholder = `Page ${nextPageNumber}`;
+}
+function openPageCreateModal() {
+  resetPageCreateModal();
+  if (!pageCreateModal.open) {
+    pageCreateModal.showModal();
+  }
+  requestAnimationFrame(() => {
+    pageCreateInput.focus();
+  });
+}
+function closePageCreateModal() {
+  if (pageCreateModal.open) {
+    pageCreateModal.close();
+  }
+  resetPageCreateModal();
+}
+async function createPageWithName(name) {
   persistActivePageState({ force: true });
   const pageNumber = nextPageNumber;
   nextPageNumber += 1;
   const page = {
     id: `page-${pageNumber}`,
-    name: `Page ${pageNumber}`
+    name: name || `Page ${pageNumber}`
   };
   pages.push(page);
   delete pageStates[page.id];
@@ -9767,9 +9799,38 @@ function wireEvents() {
     event.preventDefault();
     closeWorkspaceCreateModal();
   });
+  pageCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const value = pageCreateInput.value.trim();
+    const pageName = value || `Page ${nextPageNumber}`;
+    pageCreateError.textContent = "";
+    pageCreateInput.disabled = true;
+    pageCreateSubmit.disabled = true;
+    pageCreateCancel.disabled = true;
+    try {
+      await createPageWithName(pageName);
+      closePageCreateModal();
+    } catch (error) {
+      console.error("Failed to create page", error);
+      pageCreateError.textContent = error instanceof Error ? error.message : "Failed to create page";
+      pageCreateInput.focus();
+    } finally {
+      pageCreateInput.disabled = false;
+      pageCreateSubmit.disabled = false;
+      pageCreateCancel.disabled = false;
+    }
+  });
+  pageCreateCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    closePageCreateModal();
+  });
   workspaceCreateModal.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeWorkspaceCreateModal();
+  });
+  pageCreateModal.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closePageCreateModal();
   });
   workspaceCreateModal.addEventListener("close", () => {
     workspaceCreateInFlight = false;
@@ -9874,11 +9935,11 @@ function wireEvents() {
   });
   pageCreateButton.addEventListener("click", () => {
     closeActiveDropdown();
-    createPage();
+    handlePageCreate();
   });
   settingsWorkspaceCreateButton.addEventListener("click", handleWorkspaceCreate);
   settingsPageCreateButton.addEventListener("click", () => {
-    createPage();
+    handlePageCreate();
   });
   settingsPageList.addEventListener("click", (event) => {
     const target = event.target;
@@ -10283,7 +10344,7 @@ function wireEvents() {
   });
 }
 async function bootstrap() {
-  const versionShort = "1.2.0".split(".").slice(0, 2).join(".");
+  const versionShort = "1.1.0".split(".").slice(0, 2).join(".");
   appNameElement.textContent = `ArtBoard v${versionShort}`;
   wireEvents();
   await populateWorkspaces();

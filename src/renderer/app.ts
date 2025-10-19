@@ -214,6 +214,18 @@ const workspaceCreateCancel =
   document.querySelector<HTMLButtonElement>('#workspace-create-cancel')!;
 const workspaceCreateError =
   document.querySelector<HTMLParagraphElement>('#workspace-create-error')!;
+const pageCreateModal =
+  document.querySelector<HTMLDialogElement>('#page-create-modal')!;
+const pageCreateForm =
+  document.querySelector<HTMLFormElement>('#page-create-form')!;
+const pageCreateInput =
+  document.querySelector<HTMLInputElement>('#page-create-input')!;
+const pageCreateSubmit =
+  document.querySelector<HTMLButtonElement>('#page-create-submit')!;
+const pageCreateCancel =
+  document.querySelector<HTMLButtonElement>('#page-create-cancel')!;
+const pageCreateError =
+  document.querySelector<HTMLParagraphElement>('#page-create-error')!;
 
 const canvasElement =
   document.querySelector<HTMLCanvasElement>('#artboard')!;
@@ -2025,13 +2037,43 @@ function renderPages() {
   updateContextMenuNavigateAvailability();
 }
 
-async function createPage(): Promise<void> {
+function handlePageCreate(): void {
+  openPageCreateModal();
+}
+
+function resetPageCreateModal() {
+  pageCreateForm.reset();
+  pageCreateError.textContent = '';
+  pageCreateInput.disabled = false;
+  pageCreateSubmit.disabled = false;
+  pageCreateCancel.disabled = false;
+  pageCreateInput.placeholder = `Page ${nextPageNumber}`;
+}
+
+function openPageCreateModal() {
+  resetPageCreateModal();
+  if (!pageCreateModal.open) {
+    pageCreateModal.showModal();
+  }
+  requestAnimationFrame(() => {
+    pageCreateInput.focus();
+  });
+}
+
+function closePageCreateModal() {
+  if (pageCreateModal.open) {
+    pageCreateModal.close();
+  }
+  resetPageCreateModal();
+}
+
+async function createPageWithName(name: string): Promise<void> {
   persistActivePageState({ force: true });
   const pageNumber = nextPageNumber;
   nextPageNumber += 1;
   const page: PageItem = {
     id: `page-${pageNumber}`,
-    name: `Page ${pageNumber}`,
+    name: name || `Page ${pageNumber}`,
   };
   pages.push(page);
   delete pageStates[page.id];
@@ -2194,9 +2236,42 @@ function wireEvents() {
     closeWorkspaceCreateModal();
   });
 
+  pageCreateForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const value = pageCreateInput.value.trim();
+    const pageName = value || `Page ${nextPageNumber}`;
+    pageCreateError.textContent = '';
+    pageCreateInput.disabled = true;
+    pageCreateSubmit.disabled = true;
+    pageCreateCancel.disabled = true;
+    try {
+      await createPageWithName(pageName);
+      closePageCreateModal();
+    } catch (error) {
+      console.error('Failed to create page', error);
+      pageCreateError.textContent =
+        error instanceof Error ? error.message : 'Failed to create page';
+      pageCreateInput.focus();
+    } finally {
+      pageCreateInput.disabled = false;
+      pageCreateSubmit.disabled = false;
+      pageCreateCancel.disabled = false;
+    }
+  });
+
+  pageCreateCancel.addEventListener('click', (event) => {
+    event.preventDefault();
+    closePageCreateModal();
+  });
+
   workspaceCreateModal.addEventListener('cancel', (event) => {
     event.preventDefault();
     closeWorkspaceCreateModal();
+  });
+
+  pageCreateModal.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closePageCreateModal();
   });
 
   workspaceCreateModal.addEventListener('close', () => {
@@ -2306,13 +2381,13 @@ function wireEvents() {
 
   pageCreateButton.addEventListener('click', () => {
     closeActiveDropdown();
-    void createPage();
+    handlePageCreate();
   });
 
   settingsWorkspaceCreateButton.addEventListener('click', handleWorkspaceCreate);
 
   settingsPageCreateButton.addEventListener('click', () => {
-    void createPage();
+    handlePageCreate();
   });
 
   settingsPageList.addEventListener('click', (event) => {

@@ -405,44 +405,39 @@ function registerAssetViewerHandlers() {
     'asset-viewer:crop',
     async (
       _event,
-      payload: { id: string; x: number; y: number; width: number; height: number },
+      payload: {
+        id: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        data?: Uint8Array | ArrayBuffer;
+        format?: string;
+      },
     ) => {
       const entry = getViewerEntryByToken(payload.id);
       if (!entry) {
         return { success: false };
       }
       try {
-        const image = await loadNativeImageForAsset(entry.asset);
-        const bounds = image.getSize();
-        const x = Math.max(0, Math.floor(payload.x));
-        const y = Math.max(0, Math.floor(payload.y));
-        const width = Math.max(1, Math.floor(payload.width));
-        const height = Math.max(1, Math.floor(payload.height));
-        const cropWidth = Math.min(width, Math.max(1, bounds.width - x));
-        const cropHeight = Math.min(height, Math.max(1, bounds.height - y));
-        const cropped = image.crop({
-          x,
-          y,
-          width: cropWidth,
-          height: cropHeight,
-        });
-        if (cropped.isEmpty()) {
-          throw new Error('Resulting crop is empty');
+        const data = payload.data;
+        if (!data) {
+          return {
+            success: false,
+            error: 'No cropped image data provided',
+          } as AssetUpdateResponse;
         }
 
-        const defaultExt = path.extname(entry.asset.filename).replace('.', '') || 'png';
         let buffer: Buffer;
-        switch (defaultExt.toLowerCase()) {
-          case 'jpg':
-          case 'jpeg':
-            buffer = cropped.toJPEG(92);
-            break;
-          case 'webp':
-            buffer = cropped.toWEBP(92);
-            break;
-          default:
-            buffer = cropped.toPNG();
-            break;
+        if (data instanceof Uint8Array) {
+          buffer = Buffer.from(data);
+        } else if (data instanceof ArrayBuffer) {
+          buffer = Buffer.from(new Uint8Array(data));
+        } else {
+          return {
+            success: false,
+            error: 'Unsupported image payload format',
+          } as AssetUpdateResponse;
         }
 
         await fs.writeFile(entry.asset.absolutePath, buffer);

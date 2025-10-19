@@ -52,13 +52,6 @@ body {
     transparent;
 }
 
-/* Crop mode: make preview scrollable to handle large images */
-.viewer[data-crop-mode="true"] .viewer__preview {
-  overflow: auto;
-  align-items: flex-start;
-  justify-content: flex-start;
-}
-
 .viewer__image-frame {
   position: relative;
   max-width: 100%;
@@ -82,19 +75,6 @@ body {
   object-fit: contain;
   border-radius: 14px;
   box-shadow: 0 35px 80px rgba(0, 0, 0, 0.45);
-}
-
-/* Crop mode: show image at actual size for precise cropping */
-.viewer[data-crop-mode="true"] .viewer__image-frame {
-  max-width: none;
-  max-height: none;
-}
-
-.viewer[data-crop-mode="true"] .viewer__image-frame img {
-  max-width: none;
-  max-height: none;
-  width: auto;
-  height: auto;
 }
 
 .crop-overlay {
