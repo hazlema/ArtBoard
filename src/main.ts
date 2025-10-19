@@ -170,7 +170,9 @@ function removeViewerEntry(entry: ViewerRegistryEntry) {
 async function openAssetViewerWindow(payload: { workspace: string; relativePath: string }): Promise<void> {
   try {
     const asset = await workspaceManager.getAssetDetail(payload.workspace, payload.relativePath);
-    const viewerWindow = new BrowserWindow({
+
+    // Position the asset viewer relative to the main window
+    const windowOptions: Electron.BrowserWindowConstructorOptions = {
       width: 1280,
       height: 760,
       minWidth: 900,
@@ -179,12 +181,22 @@ async function openAssetViewerWindow(payload: { workspace: string; relativePath:
       title: `Asset • ${asset.filename}`,
       autoHideMenuBar: true,
       show: false,
+      alwaysOnTop: true,
       webPreferences: {
         preload: getPreloadPath(),
         contextIsolation: true,
         nodeIntegration: false,
       },
-    });
+    };
+
+    if (mainWindow) {
+      const mainBounds = mainWindow.getBounds();
+      // Center the asset viewer relative to the main window
+      windowOptions.x = Math.max(0, mainBounds.x + (mainBounds.width - 1280) / 2);
+      windowOptions.y = Math.max(0, mainBounds.y + (mainBounds.height - 760) / 2);
+    }
+
+    const viewerWindow = new BrowserWindow(windowOptions);
 
     const entry: ViewerRegistryEntry = {
       token: randomUUID(),
@@ -211,10 +223,9 @@ async function openAssetViewerWindow(payload: { workspace: string; relativePath:
       }
     });
 
+    // Show immediately to reduce perceived lag
+    viewerWindow.show();
     await viewerWindow.loadFile(getAssetViewerEntry());
-    viewerWindow.once('ready-to-show', () => {
-      viewerWindow.show();
-    });
   } catch (error) {
     console.error('Failed to open asset viewer', error);
   }

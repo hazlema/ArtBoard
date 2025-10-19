@@ -1554,16 +1554,26 @@ function extractAssetMeta(object: FabricObject | undefined | null):
   return meta;
 }
 
+let assetViewerOpening = false;
+
 function handleImageDoubleClick(event: TPointerEventInfo<MouseEvent>) {
   const target = event.target as FabricObject | undefined;
   const meta = extractAssetMeta(target);
-  if (!meta) {
+  if (!meta || assetViewerOpening) {
     return;
   }
+
+  assetViewerOpening = true;
   void window.workspaceAPI
     .openAssetViewer({ workspace: meta.workspace, relativePath: meta.relativePath })
     .catch((error) => {
       console.error('Failed to open asset viewer', error);
+    })
+    .finally(() => {
+      // Reset the flag after a short delay to allow subsequent opens
+      setTimeout(() => {
+        assetViewerOpening = false;
+      }, 500);
     });
 }
 
@@ -3195,6 +3205,70 @@ async function ingestAndHandleAssets(
   }
 }
 
+function selectBestImageFromHtml(urls: string[]): string | null {
+  if (urls.length === 0) {
+    return null;
+  }
+
+  // Remove duplicates
+  const uniqueUrls = Array.from(new Set(urls));
+
+  // If only one URL, return it
+  if (uniqueUrls.length === 1) {
+    return uniqueUrls[0];
+  }
+
+  // Score each URL based on various heuristics
+  const scoredUrls = uniqueUrls.map(url => ({
+    url,
+    score: calculateImageQualityScore(url)
+  }));
+
+  // Sort by score (highest first) and return the best one
+  scoredUrls.sort((a, b) => b.score - a.score);
+  return scoredUrls[0].url;
+}
+
+function calculateImageQualityScore(url: string): number {
+  let score = 0;
+
+  // Prefer URLs that look like full-size images over thumbnails
+  if (url.includes('full') || url.includes('large') || url.includes('original')) {
+    score += 10;
+  }
+
+  // Prefer certain image formats (webp is often highest quality, then png, then jpg)
+  if (url.includes('.webp')) {
+    score += 8;
+  } else if (url.includes('.png')) {
+    score += 6;
+  } else if (url.includes('.jpg') || url.includes('.jpeg')) {
+    score += 4;
+  }
+
+  // Prefer URLs that contain dimension information (likely full-size)
+  const dimensionMatch = url.match(/(\d+)x(\d+)/);
+  if (dimensionMatch) {
+    const width = parseInt(dimensionMatch[1], 10);
+    const height = parseInt(dimensionMatch[2], 10);
+    if (width >= 800 || height >= 800) {
+      score += 5;
+    }
+  }
+
+  // Prefer URLs that don't contain thumbnail-related keywords
+  if (!url.includes('thumb') && !url.includes('small') && !url.includes('mini')) {
+    score += 3;
+  }
+
+  // For Google Images specifically, prefer imgurl parameter
+  if (url.includes('imgurl=')) {
+    score += 7;
+  }
+
+  return score;
+}
+
 async function collectDataTransferPayload(
   transfer: DataTransfer | null,
   context: { label: string },
@@ -3235,6 +3309,7 @@ async function collectDataTransferPayload(
   const fileCandidates = new Set<string>();
   const candidateUrls = new Set<string>();
   const dataUrlCandidates = new Set<string>();
+  const htmlExtractedUrls: string[] = [];
 
   const collectDataUriCandidate = (value: string): boolean => {
     if (!value || !value.startsWith('data:')) {
@@ -3244,39 +3319,47 @@ async function collectDataTransferPayload(
     return true;
   };
 
-  const addUrlCandidate = (value: string) => {
+  const addUrlCandidate = (value: string, fromHtml = false) => {
     if (!value) {
       return;
     }
     if (collectDataUriCandidate(value)) {
       return;
     }
-    expandDropUrlCandidates(value).forEach((candidate) => {
-      candidateUrls.add(candidate);
-    });
+    if (fromHtml) {
+      htmlExtractedUrls.push(value);
+    } else {
+      expandDropUrlCandidates(value).forEach((candidate) => {
+        candidateUrls.add(candidate);
+      });
+    }
   };
 
-  uriList
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .forEach((value) => {
-      if (value.startsWith('file://')) {
-        fileCandidates.add(value);
-        return;
-      }
-      addUrlCandidate(value);
-    });
-
-  const plain = text.trim();
-  if (plain) {
-    if (plain.startsWith('file://')) {
-      fileCandidates.add(plain);
-    } else {
-      extractUrlsFromText(plain).forEach((candidate) => {
-        addUrlCandidate(candidate);
+  // When we have HTML content (likely from image sites), prioritize HTML-extracted URLs
+  // and don't process uriList/text URLs to avoid duplicates
+  if (!html) {
+    uriList
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .forEach((value) => {
+        if (value.startsWith('file://')) {
+          fileCandidates.add(value);
+          return;
+        }
+        addUrlCandidate(value, false);
       });
-      addUrlCandidate(plain);
+
+    const plain = text.trim();
+    if (plain) {
+      if (plain.startsWith('file://')) {
+        fileCandidates.add(plain);
+      } else {
+        extractUrlsFromText(plain).forEach((candidate) => {
+          addUrlCandidate(candidate, false);
+        });
+        addUrlCandidate(plain, false);
+      }
     }
   }
 
@@ -3290,7 +3373,7 @@ async function collectDataTransferPayload(
         if (src.startsWith('file://')) {
           fileCandidates.add(src);
         } else if (!collectDataUriCandidate(src) && isHttpUrl(src)) {
-          addUrlCandidate(src);
+          addUrlCandidate(src, true);
         }
       });
       doc.querySelectorAll('a[href]').forEach((anchor) => {
@@ -3299,7 +3382,7 @@ async function collectDataTransferPayload(
         if (href.startsWith('file://')) {
           fileCandidates.add(href);
         } else if (!collectDataUriCandidate(href) && isHttpUrl(href)) {
-          addUrlCandidate(href);
+          addUrlCandidate(href, true);
         }
       });
       doc.querySelectorAll('img, source, [data-src], [data-url], [data-href], [data-large-src], [data-fullsize]').forEach((element) => {
@@ -3313,7 +3396,7 @@ async function collectDataTransferPayload(
               return;
             }
             if (!collectDataUriCandidate(value) && isHttpUrl(value)) {
-              addUrlCandidate(value);
+              addUrlCandidate(value, true);
             }
           });
       });
@@ -3324,7 +3407,7 @@ async function collectDataTransferPayload(
           if (candidate.startsWith('file://')) {
             fileCandidates.add(candidate);
           } else if (!collectDataUriCandidate(candidate) && isHttpUrl(candidate)) {
-            addUrlCandidate(candidate);
+            addUrlCandidate(candidate, true);
           }
         });
       });
@@ -3334,7 +3417,7 @@ async function collectDataTransferPayload(
         if (content.startsWith('file://')) {
           fileCandidates.add(content);
         } else if (!collectDataUriCandidate(content) && isHttpUrl(content)) {
-          addUrlCandidate(content);
+          addUrlCandidate(content, true);
         }
       });
     } catch (error) {
@@ -3398,6 +3481,15 @@ async function collectDataTransferPayload(
     .forEach((entry) => {
       inlineFiles.push(entry);
     });
+
+  // Select the best image from HTML-extracted URLs
+  if (htmlExtractedUrls.length > 0) {
+    const bestUrl = selectBestImageFromHtml(htmlExtractedUrls);
+    if (bestUrl) {
+      // For HTML-extracted URLs, don't expand further - just use the selected best URL
+      candidateUrls.add(bestUrl);
+    }
+  }
 
   return {
     files: Array.from(new Set([...filePaths, ...normalizedFilePaths])),

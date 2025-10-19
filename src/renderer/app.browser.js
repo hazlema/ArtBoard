@@ -9234,14 +9234,20 @@ function extractAssetMeta(object) {
   }
   return meta;
 }
+var assetViewerOpening = false;
 function handleImageDoubleClick(event) {
   const target = event.target;
   const meta = extractAssetMeta(target);
-  if (!meta) {
+  if (!meta || assetViewerOpening) {
     return;
   }
+  assetViewerOpening = true;
   window.workspaceAPI.openAssetViewer({ workspace: meta.workspace, relativePath: meta.relativePath }).catch((error) => {
     console.error("Failed to open asset viewer", error);
+  }).finally(() => {
+    setTimeout(() => {
+      assetViewerOpening = false;
+    }, 500);
   });
 }
 function handleWorkspaceCreate() {
@@ -10578,6 +10584,49 @@ async function ingestAndHandleAssets(workspace, payload, context) {
     hideDropProgress(2400);
   }
 }
+function selectBestImageFromHtml(urls) {
+  if (urls.length === 0) {
+    return null;
+  }
+  const uniqueUrls = Array.from(new Set(urls));
+  if (uniqueUrls.length === 1) {
+    return uniqueUrls[0];
+  }
+  const scoredUrls = uniqueUrls.map((url) => ({
+    url,
+    score: calculateImageQualityScore(url)
+  }));
+  scoredUrls.sort((a2, b2) => b2.score - a2.score);
+  return scoredUrls[0].url;
+}
+function calculateImageQualityScore(url) {
+  let score = 0;
+  if (url.includes("full") || url.includes("large") || url.includes("original")) {
+    score += 10;
+  }
+  if (url.includes(".webp")) {
+    score += 8;
+  } else if (url.includes(".png")) {
+    score += 6;
+  } else if (url.includes(".jpg") || url.includes(".jpeg")) {
+    score += 4;
+  }
+  const dimensionMatch = url.match(/(\d+)x(\d+)/);
+  if (dimensionMatch) {
+    const width = parseInt(dimensionMatch[1], 10);
+    const height = parseInt(dimensionMatch[2], 10);
+    if (width >= 800 || height >= 800) {
+      score += 5;
+    }
+  }
+  if (!url.includes("thumb") && !url.includes("small") && !url.includes("mini")) {
+    score += 3;
+  }
+  if (url.includes("imgurl=")) {
+    score += 7;
+  }
+  return score;
+}
 async function collectDataTransferPayload(transfer, context) {
   const { label } = context;
   const types = Array.from(transfer?.types ?? []);
@@ -10606,6 +10655,7 @@ async function collectDataTransferPayload(transfer, context) {
   const fileCandidates = new Set;
   const candidateUrls = new Set;
   const dataUrlCandidates = new Set;
+  const htmlExtractedUrls = [];
   const collectDataUriCandidate = (value) => {
     if (!value || !value.startsWith("data:")) {
       return false;
@@ -10613,33 +10663,39 @@ async function collectDataTransferPayload(transfer, context) {
     dataUrlCandidates.add(value);
     return true;
   };
-  const addUrlCandidate = (value) => {
+  const addUrlCandidate = (value, fromHtml = false) => {
     if (!value) {
       return;
     }
     if (collectDataUriCandidate(value)) {
       return;
     }
-    expandDropUrlCandidates(value).forEach((candidate) => {
-      candidateUrls.add(candidate);
-    });
-  };
-  uriList.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).forEach((value) => {
-    if (value.startsWith("file://")) {
-      fileCandidates.add(value);
-      return;
-    }
-    addUrlCandidate(value);
-  });
-  const plain = text.trim();
-  if (plain) {
-    if (plain.startsWith("file://")) {
-      fileCandidates.add(plain);
+    if (fromHtml) {
+      htmlExtractedUrls.push(value);
     } else {
-      extractUrlsFromText(plain).forEach((candidate) => {
-        addUrlCandidate(candidate);
+      expandDropUrlCandidates(value).forEach((candidate) => {
+        candidateUrls.add(candidate);
       });
-      addUrlCandidate(plain);
+    }
+  };
+  if (!html) {
+    uriList.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).forEach((value) => {
+      if (value.startsWith("file://")) {
+        fileCandidates.add(value);
+        return;
+      }
+      addUrlCandidate(value, false);
+    });
+    const plain = text.trim();
+    if (plain) {
+      if (plain.startsWith("file://")) {
+        fileCandidates.add(plain);
+      } else {
+        extractUrlsFromText(plain).forEach((candidate) => {
+          addUrlCandidate(candidate, false);
+        });
+        addUrlCandidate(plain, false);
+      }
     }
   }
   if (html) {
@@ -10653,7 +10709,7 @@ async function collectDataTransferPayload(transfer, context) {
         if (src.startsWith("file://")) {
           fileCandidates.add(src);
         } else if (!collectDataUriCandidate(src) && isHttpUrl(src)) {
-          addUrlCandidate(src);
+          addUrlCandidate(src, true);
         }
       });
       doc.querySelectorAll("a[href]").forEach((anchor) => {
@@ -10663,7 +10719,7 @@ async function collectDataTransferPayload(transfer, context) {
         if (href.startsWith("file://")) {
           fileCandidates.add(href);
         } else if (!collectDataUriCandidate(href) && isHttpUrl(href)) {
-          addUrlCandidate(href);
+          addUrlCandidate(href, true);
         }
       });
       doc.querySelectorAll("img, source, [data-src], [data-url], [data-href], [data-large-src], [data-fullsize]").forEach((element) => {
@@ -10673,7 +10729,7 @@ async function collectDataTransferPayload(transfer, context) {
             return;
           }
           if (!collectDataUriCandidate(value) && isHttpUrl(value)) {
-            addUrlCandidate(value);
+            addUrlCandidate(value, true);
           }
         });
       });
@@ -10685,7 +10741,7 @@ async function collectDataTransferPayload(transfer, context) {
           if (candidate.startsWith("file://")) {
             fileCandidates.add(candidate);
           } else if (!collectDataUriCandidate(candidate) && isHttpUrl(candidate)) {
-            addUrlCandidate(candidate);
+            addUrlCandidate(candidate, true);
           }
         });
       });
@@ -10696,7 +10752,7 @@ async function collectDataTransferPayload(transfer, context) {
         if (content.startsWith("file://")) {
           fileCandidates.add(content);
         } else if (!collectDataUriCandidate(content) && isHttpUrl(content)) {
-          addUrlCandidate(content);
+          addUrlCandidate(content, true);
         }
       });
     } catch (error) {
@@ -10749,6 +10805,12 @@ async function collectDataTransferPayload(transfer, context) {
   inlineBlobResults.filter((entry) => Boolean(entry)).forEach((entry) => {
     inlineFiles.push(entry);
   });
+  if (htmlExtractedUrls.length > 0) {
+    const bestUrl = selectBestImageFromHtml(htmlExtractedUrls);
+    if (bestUrl) {
+      candidateUrls.add(bestUrl);
+    }
+  }
   return {
     files: Array.from(new Set([...filePaths, ...normalizedFilePaths])),
     urls: Array.from(candidateUrls),
