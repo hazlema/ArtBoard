@@ -380,6 +380,7 @@ function enterCropMode(): void {
   }
 
   cropModeActive = true;
+  viewerRoot.dataset.cropMode = 'true';
   updateCropButton();
   closeModal(saveAsModal);
   closeModal(resizeModal);
@@ -388,7 +389,7 @@ function enterCropMode(): void {
   cropOverlay.setAttribute('aria-hidden', 'false');
   cropSelectionElement.hidden = !activeSelection;
   showCropPanel();
-  setFeedback('Drag on the image to choose the crop area. Press Enter or click Apply to confirm.', 'info');
+  setFeedback('Drag on the image to select the crop area. Scroll to navigate large images. Press Enter or click Apply to confirm.', 'info');
   syncCropFormWithSelection(activeSelection);
   requestAnimationFrame(() => {
     refreshCropMetrics();
@@ -407,6 +408,7 @@ function exitCropMode(options?: { resetSelection?: boolean }): void {
   cropDragState = null;
   cropOverlay.classList.remove('is-dragging');
   cropModeActive = false;
+  viewerRoot.dataset.cropMode = 'false';
   updateCropButton();
   cropOverlay.dataset.active = 'false';
   cropOverlay.dataset.hasSelection = 'false';
