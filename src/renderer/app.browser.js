@@ -9662,6 +9662,9 @@ async function createPageWithName(name) {
   };
   pages.push(page);
   delete pageStates[page.id];
+  if (contextSubmenuVisible && (contextSubmenuMode === "move" || contextSubmenuMode === "navigate")) {
+    hideContextSubmenu();
+  }
   await setActivePage(page.id, { persist: false, schedule: false });
   syncPreferencesWithPages();
   savePreferences();
@@ -9693,6 +9696,9 @@ function renamePage(pageId, name) {
   if (!page)
     return;
   page.name = name;
+  if (contextSubmenuVisible && (contextSubmenuMode === "move" || contextSubmenuMode === "navigate")) {
+    hideContextSubmenu();
+  }
   renderPages();
   syncPreferencesWithPages();
   savePreferences();
@@ -9704,9 +9710,17 @@ async function deletePage(pageId) {
   persistActivePageState({ force: true });
   pages = pages.filter((page) => page.id !== pageId);
   delete pageStates[pageId];
+  if (contextSubmenuVisible && (contextSubmenuMode === "move" || contextSubmenuMode === "navigate")) {
+    hideContextSubmenu();
+  }
+  const wasActivePage = pageId === activePageId;
   const targetPageId = pages.some((page) => page.id === activePageId) ? activePageId : pages[0]?.id ?? null;
   if (targetPageId) {
-    await setActivePage(targetPageId, { persist: false, schedule: false });
+    if (wasActivePage) {
+      await setActivePage(targetPageId, { persist: false, schedule: false });
+    } else {
+      renderPages();
+    }
   } else {
     activePageId = null;
     renderPages();

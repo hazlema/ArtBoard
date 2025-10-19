@@ -2077,6 +2077,12 @@ async function createPageWithName(name: string): Promise<void> {
   };
   pages.push(page);
   delete pageStates[page.id];
+
+  // Hide context submenu if it's showing page lists (they're now stale)
+  if (contextSubmenuVisible && (contextSubmenuMode === 'move' || contextSubmenuMode === 'navigate')) {
+    hideContextSubmenu();
+  }
+
   await setActivePage(page.id, { persist: false, schedule: false });
   syncPreferencesWithPages();
   savePreferences();
@@ -2118,6 +2124,12 @@ function renamePage(pageId: string, name: string) {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return;
   page.name = name;
+
+  // Hide context submenu if it's showing page lists (they're now stale)
+  if (contextSubmenuVisible && (contextSubmenuMode === 'move' || contextSubmenuMode === 'navigate')) {
+    hideContextSubmenu();
+  }
+
   renderPages();
   syncPreferencesWithPages();
   savePreferences();
@@ -2130,13 +2142,26 @@ async function deletePage(pageId: string): Promise<void> {
   pages = pages.filter((page) => page.id !== pageId);
   delete pageStates[pageId];
 
+  // Hide context submenu if it's showing page lists (they're now stale)
+  if (contextSubmenuVisible && (contextSubmenuMode === 'move' || contextSubmenuMode === 'navigate')) {
+    hideContextSubmenu();
+  }
+
+  const wasActivePage = pageId === activePageId;
   const targetPageId = pages.some((page) => page.id === activePageId)
     ? activePageId
     : pages[0]?.id ?? null;
 
   if (targetPageId) {
-    await setActivePage(targetPageId, { persist: false, schedule: false });
+    if (wasActivePage) {
+      // Deleted the active page, need to switch to another page
+      await setActivePage(targetPageId, { persist: false, schedule: false });
+    } else {
+      // Deleted a non-active page, just update the UI
+      renderPages();
+    }
   } else {
+    // No pages left (shouldn't happen due to length check, but handle it)
     activePageId = null;
     renderPages();
     fabricCanvas.clear();

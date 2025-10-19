@@ -262,6 +262,95 @@ export class WorkspaceManager {
       JSON.stringify(state, null, 2),
       'utf8',
     );
+
+    // Clean up orphaned assets after saving
+    await this.cleanupOrphanedAssets(workspace, state);
+  }
+
+  private async cleanupOrphanedAssets(
+    workspace: string,
+    state: WorkspaceState,
+  ): Promise<void> {
+    try {
+      const imagesDir = await this.ensureImagesDir(workspace);
+
+      // Collect all referenced image filenames from all pages
+      const referencedFiles = new Set<string>();
+
+      // Helper to extract filenames from artboard:// URLs
+      const extractFilename = (url: string): string | null => {
+        if (!url || typeof url !== 'string') return null;
+        if (!url.startsWith('artboard://')) return null;
+
+        try {
+          // artboard://<workspace>/<path> format
+          const match = url.match(/^artboard:\/\/[^/]+\/(.+)$/);
+          if (!match) return null;
+
+          const relativePath = decodeURIComponent(match[1]);
+          const filename = path.basename(relativePath);
+          return filename;
+        } catch {
+          return null;
+        }
+      };
+
+      // Scan objects in the current active page state
+      if (Array.isArray((state as { objects?: unknown[] }).objects)) {
+        const objects = (state as { objects?: unknown[] }).objects as Array<{ src?: string }>;
+        for (const obj of objects) {
+          if (obj.src) {
+            const filename = extractFilename(obj.src);
+            if (filename) {
+              referencedFiles.add(filename);
+            }
+          }
+        }
+      }
+
+      // Scan objects in all stored pages (multi-page workspaces)
+      if (Array.isArray((state as { pages?: unknown[] }).pages)) {
+        const pages = (state as { pages?: Array<{ state?: { objects?: unknown[] } }> }).pages;
+        for (const page of pages) {
+          if (page?.state && Array.isArray(page.state.objects)) {
+            const objects = page.state.objects as Array<{ src?: string }>;
+            for (const obj of objects) {
+              if (obj.src) {
+                const filename = extractFilename(obj.src);
+                if (filename) {
+                  referencedFiles.add(filename);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // List all files in the images directory
+      const files = await fs.readdir(imagesDir);
+
+      // Delete files that are not referenced
+      let deletedCount = 0;
+      for (const file of files) {
+        if (!referencedFiles.has(file)) {
+          const filePath = path.join(imagesDir, file);
+          try {
+            await fs.unlink(filePath);
+            deletedCount++;
+            console.log(`[WorkspaceManager] Deleted orphaned asset: ${file}`);
+          } catch (error) {
+            console.warn(`[WorkspaceManager] Failed to delete orphaned asset ${file}:`, error);
+          }
+        }
+      }
+
+      if (deletedCount > 0) {
+        console.log(`[WorkspaceManager] Cleaned up ${deletedCount} orphaned asset(s) from ${workspace}`);
+      }
+    } catch (error) {
+      // Don't fail the save operation if cleanup fails
+      console.warn(`[WorkspaceManager] Failed to cleanup orphaned assets:`, error);
+    }
   }
 
   async ingestAssets(
