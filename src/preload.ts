@@ -75,10 +75,13 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       workspace,
       payload,
     ) as Promise<AssetIngestResult>,
-  capture: (workspace: string) =>
+  getDisplays: () =>
+    ipcRenderer.invoke('workspace:get-displays') as Promise<Array<{ id: number; label: string }>>,
+  capture: (workspace: string, displayId?: number) =>
     ipcRenderer.invoke(
       'workspace:capture-screenshot',
       workspace,
+      displayId,
     ) as Promise<AssetDescriptor | null>,
   readAsset: (workspace: string, relativePath: string) =>
     ipcRenderer.invoke(

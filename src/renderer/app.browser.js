@@ -8148,8 +8148,9 @@ var settingsClose = document.querySelector("#settings-close");
 var openReferenceButton = document.querySelector("#open-reference");
 var referenceModal = document.querySelector("#reference-modal");
 var referenceClose = document.querySelector("#reference-close");
-var tabButtons = Array.from(document.querySelectorAll(".settings__tab"));
-var panels = Array.from(document.querySelectorAll(".settings__panel"));
+var tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+var panels = Array.from(document.querySelectorAll(".settings-panel"));
+var settingsCloseX = document.querySelector("#settings-close-x");
 var contextMenu = document.querySelector("#canvas-context-menu");
 var contextMenuPasteButton = contextMenu.querySelector('button[data-action="paste"]');
 var contextMenuNavigateButton = contextMenu.querySelector('button[data-action="navigate"]');
@@ -8178,6 +8179,23 @@ var pageCreateInput = document.querySelector("#page-create-input");
 var pageCreateSubmit = document.querySelector("#page-create-submit");
 var pageCreateCancel = document.querySelector("#page-create-cancel");
 var pageCreateError = document.querySelector("#page-create-error");
+var displaySelectModal = document.querySelector("#display-select-modal");
+var displaySelectForm = document.querySelector("#display-select-form");
+var displaySelectList = document.querySelector("#display-select-list");
+var displaySelectCancel = document.querySelector("#display-select-cancel");
+var renameModal = document.querySelector("#rename-modal");
+var renameForm = document.querySelector("#rename-form");
+var renameTitle = document.querySelector("#rename-title");
+var renameInput = document.querySelector("#rename-input");
+var renameSubmit = document.querySelector("#rename-submit");
+var renameCancel = document.querySelector("#rename-cancel");
+var renameError = document.querySelector("#rename-error");
+var confirmModal = document.querySelector("#confirm-modal");
+var confirmForm = document.querySelector("#confirm-form");
+var confirmTitle = document.querySelector("#confirm-title");
+var confirmMessage = document.querySelector("#confirm-message");
+var confirmSubmit = document.querySelector("#confirm-submit");
+var confirmCancel = document.querySelector("#confirm-cancel");
 var canvasElement = document.querySelector("#artboard");
 var fabricCanvas = new In(canvasElement, {
   backgroundColor: "#1f1f1f",
@@ -9307,13 +9325,12 @@ async function loadWorkspace(workspace) {
 function handleTabChange(targetTab) {
   tabButtons.forEach((button) => {
     const isActive = button.dataset.tab === targetTab;
-    button.classList.toggle("is-active", isActive);
+    button.classList.toggle("tab-btn--active", isActive);
     button.setAttribute("aria-selected", isActive ? "true" : "false");
   });
   panels.forEach((panel) => {
     const isActive = panel.dataset.panel === targetTab;
-    panel.classList.toggle("is-active", isActive);
-    panel.toggleAttribute("hidden", !isActive);
+    panel.classList.toggle("settings-panel--active", isActive);
   });
 }
 function renderWorkspaceList(workspaces) {
@@ -9337,41 +9354,47 @@ function renderWorkspaceList(workspaces) {
 function renderSettingsWorkspaceList(workspaces) {
   const disableDelete = workspaces.length <= 1;
   settingsWorkspaceList.replaceChildren(...workspaces.map((workspace) => {
-    const item = document.createElement("li");
+    const item = document.createElement("div");
+    item.className = "settings-list-item";
     item.dataset.workspace = workspace;
-    const meta = document.createElement("div");
-    meta.className = "workspace-list__meta";
-    const name = document.createElement("span");
-    name.className = "workspace-list__name";
-    name.textContent = workspace;
-    meta.appendChild(name);
-    const actions = document.createElement("div");
-    actions.className = "workspace-item__actions";
-    const activateButton = document.createElement("button");
-    activateButton.type = "button";
-    activateButton.dataset.action = "activate";
-    activateButton.textContent = "Switch";
     const isActive = workspace === activeWorkspace;
     if (isActive) {
-      activateButton.disabled = true;
+      item.classList.add("settings-list-item--active");
     }
+    const info = document.createElement("div");
+    info.className = "list-item-info";
+    const icon = document.createElement("span");
+    icon.className = "item-icon";
+    icon.textContent = "✨";
+    const details = document.createElement("div");
+    details.className = "item-details";
+    const name = document.createElement("span");
+    name.className = "item-name";
+    name.textContent = workspace;
+    details.appendChild(name);
+    info.append(icon, details);
+    const actions = document.createElement("div");
+    actions.className = "list-item-actions";
     const renameButton = document.createElement("button");
     renameButton.type = "button";
+    renameButton.className = "icon-btn icon-btn--small";
     renameButton.dataset.action = "rename";
-    renameButton.textContent = "Rename";
+    renameButton.title = "Rename";
+    renameButton.textContent = "✏️";
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
+    deleteButton.className = "icon-btn icon-btn--small icon-btn--danger";
     deleteButton.dataset.action = "delete";
-    deleteButton.textContent = "Delete";
+    deleteButton.title = "Delete";
+    deleteButton.textContent = "\uD83D\uDDD1️";
     if (disableDelete) {
       deleteButton.disabled = true;
       deleteButton.title = "Keep at least one workspace";
     }
-    actions.append(activateButton, renameButton, deleteButton);
-    item.append(meta, actions);
+    actions.append(renameButton, deleteButton);
+    item.append(info, actions);
     return item;
   }));
-  highlightActiveWorkspace();
 }
 function updatePageIndicator() {
   const activePage = pages.find((page) => page.id === activePageId);
@@ -9588,37 +9611,45 @@ function renderPages() {
     return item;
   }));
   settingsPageList.replaceChildren(...pages.map((page) => {
-    const item = document.createElement("li");
+    const item = document.createElement("div");
+    item.className = "settings-list-item";
     item.dataset.page = page.id;
-    if (page.id === activePageId) {
-      item.classList.add("active");
+    const isActive = page.id === activePageId;
+    if (isActive) {
+      item.classList.add("settings-list-item--active");
     }
+    const info = document.createElement("div");
+    info.className = "list-item-info";
+    const icon = document.createElement("span");
+    icon.className = "item-icon";
+    icon.textContent = "\uD83D\uDCC4";
+    const details = document.createElement("div");
+    details.className = "item-details";
     const name = document.createElement("span");
-    name.className = "workspace-list__name";
+    name.className = "item-name";
     name.textContent = page.name;
+    details.appendChild(name);
+    info.append(icon, details);
     const actions = document.createElement("div");
-    actions.className = "workspace-item__actions";
-    const activateButton = document.createElement("button");
-    activateButton.type = "button";
-    activateButton.dataset.action = "activate";
-    activateButton.textContent = "Switch";
-    if (page.id === activePageId) {
-      activateButton.disabled = true;
-    }
+    actions.className = "list-item-actions";
     const renameButton = document.createElement("button");
     renameButton.type = "button";
+    renameButton.className = "icon-btn icon-btn--small";
     renameButton.dataset.action = "rename";
-    renameButton.textContent = "Rename";
+    renameButton.title = "Rename";
+    renameButton.textContent = "✏️";
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
+    deleteButton.className = "icon-btn icon-btn--small icon-btn--danger";
     deleteButton.dataset.action = "delete";
-    deleteButton.textContent = "Delete";
+    deleteButton.title = "Delete";
+    deleteButton.textContent = "\uD83D\uDDD1️";
     if (pages.length <= 1) {
       deleteButton.disabled = true;
       deleteButton.title = "Keep at least one page";
     }
-    actions.append(activateButton, renameButton, deleteButton);
-    item.append(name, actions);
+    actions.append(renameButton, deleteButton);
+    item.append(info, actions);
     return item;
   }));
   updatePageIndicator();
@@ -9669,6 +9700,126 @@ async function createPageWithName(name) {
   syncPreferencesWithPages();
   savePreferences();
   scheduleSave();
+}
+var currentRenameContext = null;
+function resetRenameModal() {
+  renameForm.reset();
+  renameError.textContent = "";
+  renameInput.disabled = false;
+  renameSubmit.disabled = false;
+  renameCancel.disabled = false;
+  currentRenameContext = null;
+}
+function openRenameModal(context) {
+  resetRenameModal();
+  currentRenameContext = context;
+  if (context.type === "workspace") {
+    renameTitle.textContent = "Rename Workspace";
+    renameInput.value = context.name;
+  } else {
+    renameTitle.textContent = "Rename Page";
+    renameInput.value = context.name;
+  }
+  if (!renameModal.open) {
+    renameModal.showModal();
+  }
+  requestAnimationFrame(() => {
+    renameInput.select();
+    renameInput.focus();
+  });
+}
+function closeRenameModal() {
+  if (renameModal.open) {
+    renameModal.close();
+  }
+  resetRenameModal();
+}
+async function handleRenameSubmit() {
+  if (!currentRenameContext)
+    return;
+  const trimmed = renameInput.value.trim();
+  if (!trimmed) {
+    renameError.textContent = "Name cannot be empty";
+    return;
+  }
+  renameInput.disabled = true;
+  renameSubmit.disabled = true;
+  renameCancel.disabled = true;
+  renameError.textContent = "";
+  try {
+    if (currentRenameContext.type === "workspace") {
+      const slug = await window.workspaceAPI.rename(currentRenameContext.name, trimmed);
+      await populateWorkspaces(slug);
+      closeRenameModal();
+    } else {
+      renamePage(currentRenameContext.pageId, trimmed);
+      closeRenameModal();
+    }
+  } catch (error) {
+    console.error("Rename failed", error);
+    renameError.textContent = error instanceof Error ? error.message : "Failed to rename";
+    renameInput.disabled = false;
+    renameSubmit.disabled = false;
+    renameCancel.disabled = false;
+  }
+}
+function showConfirmModal(options) {
+  return new Promise((resolve) => {
+    confirmTitle.textContent = options.title;
+    confirmMessage.textContent = options.message;
+    const handleSubmit = (event) => {
+      event.preventDefault();
+      cleanup();
+      confirmModal.close();
+      resolve(true);
+    };
+    const handleCancel = () => {
+      cleanup();
+      confirmModal.close();
+      resolve(false);
+    };
+    const cleanup = () => {
+      confirmForm.removeEventListener("submit", handleSubmit);
+      confirmCancel.removeEventListener("click", handleCancel);
+      confirmModal.removeEventListener("cancel", handleCancel);
+    };
+    confirmForm.addEventListener("submit", handleSubmit);
+    confirmCancel.addEventListener("click", handleCancel);
+    confirmModal.addEventListener("cancel", handleCancel);
+    confirmModal.showModal();
+  });
+}
+async function showDisplaySelectModal() {
+  return new Promise((resolve) => {
+    const handleSelection = (displayId) => {
+      displaySelectModal.close();
+      displaySelectList.replaceChildren();
+      resolve(displayId);
+    };
+    const handleCancel = () => {
+      displaySelectModal.close();
+      displaySelectList.replaceChildren();
+      resolve(null);
+    };
+    window.workspaceAPI.getDisplays().then((displays) => {
+      if (displays.length === 1) {
+        resolve(displays[0].id);
+        return;
+      }
+      displaySelectList.replaceChildren(...displays.map((display) => {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = display.label;
+        button.addEventListener("click", () => handleSelection(display.id));
+        item.appendChild(button);
+        return item;
+      }));
+      displaySelectCancel.onclick = handleCancel;
+      displaySelectModal.oncancel = handleCancel;
+      displaySelectModal.showModal();
+    });
+  });
 }
 async function setActivePage(pageId, options) {
   if (!pages.some((page) => page.id === pageId)) {
@@ -9838,6 +9989,21 @@ function wireEvents() {
     event.preventDefault();
     closePageCreateModal();
   });
+  renameForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await handleRenameSubmit();
+  });
+  renameCancel.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeRenameModal();
+  });
+  renameModal.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeRenameModal();
+  });
+  renameModal.addEventListener("close", () => {
+    resetRenameModal();
+  });
   workspaceCreateModal.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeWorkspaceCreateModal();
@@ -9864,47 +10030,33 @@ function wireEvents() {
   });
   settingsWorkspaceList.addEventListener("click", async (event) => {
     const target = event.target;
-    const item = target.closest("li[data-workspace]");
-    if (!item)
-      return;
-    const workspace = item.dataset.workspace ?? "";
-    if (!workspace)
-      return;
-    const actionButton = target.closest("button[data-action]");
+    const actionButton = target.matches("button[data-action]") ? target : target.closest("button[data-action]");
     if (actionButton) {
-      const action = actionButton.dataset.action;
-      if (action === "activate") {
-        if (workspace !== activeWorkspace) {
-          await loadWorkspace(workspace);
-        }
+      event.stopPropagation();
+      const item2 = actionButton.closest("[data-workspace]");
+      if (!item2)
         return;
-      }
+      const workspace2 = item2.dataset.workspace ?? "";
+      if (!workspace2)
+        return;
+      const action = actionButton.dataset.action;
       if (action === "rename") {
-        const next = window.prompt("Rename workspace", workspace);
-        const trimmed = next?.trim();
-        if (!trimmed)
-          return;
-        actionButton.disabled = true;
-        try {
-          const slug = await window.workspaceAPI.rename(workspace, trimmed);
-          await populateWorkspaces(slug);
-        } catch (error) {
-          console.error("Failed to rename workspace", error);
-        } finally {
-          actionButton.disabled = false;
-        }
+        openRenameModal({ type: "workspace", name: workspace2 });
         return;
       }
       if (action === "delete") {
         if (currentWorkspaces.length <= 1) {
           return;
         }
-        const confirmed = window.confirm(`Delete workspace "${workspace}"? This will remove its saved images.`);
+        const confirmed = await showConfirmModal({
+          title: "Delete Workspace",
+          message: `Delete workspace "${workspace2}"? This will remove its saved images.`
+        });
         if (!confirmed)
           return;
         actionButton.disabled = true;
         try {
-          await window.workspaceAPI.remove(workspace);
+          await window.workspaceAPI.remove(workspace2);
           await populateWorkspaces();
         } catch (error) {
           console.error("Failed to delete workspace", error);
@@ -9915,6 +10067,12 @@ function wireEvents() {
       }
       return;
     }
+    const item = target.closest("[data-workspace]");
+    if (!item)
+      return;
+    const workspace = item.dataset.workspace ?? "";
+    if (!workspace)
+      return;
     if (workspace !== activeWorkspace) {
       await loadWorkspace(workspace);
     }
@@ -9955,41 +10113,46 @@ function wireEvents() {
   settingsPageCreateButton.addEventListener("click", () => {
     handlePageCreate();
   });
-  settingsPageList.addEventListener("click", (event) => {
+  settingsPageList.addEventListener("click", async (event) => {
     const target = event.target;
-    const item = target.closest("li[data-page]");
-    if (!item)
-      return;
-    const pageId = item.dataset.page ?? "";
-    if (!pageId)
-      return;
-    const actionButton = target.closest("button[data-action]");
+    const actionButton = target.matches("button[data-action]") ? target : target.closest("button[data-action]");
     if (actionButton) {
-      const action = actionButton.dataset.action;
-      if (action === "activate") {
-        setActivePage(pageId);
+      event.stopPropagation();
+      const item2 = actionButton.closest("[data-page]");
+      if (!item2)
         return;
-      }
+      const pageId2 = item2.dataset.page ?? "";
+      if (!pageId2)
+        return;
+      const action = actionButton.dataset.action;
       if (action === "rename") {
-        const page = pages.find((p2) => p2.id === pageId);
-        const next = window.prompt("Rename page", page?.name ?? "");
-        const trimmed = next?.trim();
-        if (!trimmed)
+        const page = pages.find((p2) => p2.id === pageId2);
+        if (!page)
           return;
-        renamePage(pageId, trimmed);
+        openRenameModal({ type: "page", pageId: pageId2, name: page.name });
         return;
       }
       if (action === "delete") {
         if (pages.length <= 1)
           return;
-        const confirmed = window.confirm("Delete this page?");
+        const page = pages.find((p2) => p2.id === pageId2);
+        const confirmed = await showConfirmModal({
+          title: "Delete Page",
+          message: `Delete page "${page?.name ?? "this page"}"? This cannot be undone.`
+        });
         if (!confirmed)
           return;
-        deletePage(pageId);
+        deletePage(pageId2);
         return;
       }
       return;
     }
+    const item = target.closest("[data-page]");
+    if (!item)
+      return;
+    const pageId = item.dataset.page ?? "";
+    if (!pageId)
+      return;
     setActivePage(pageId);
   });
   zoomMenu.addEventListener("click", (event) => {
@@ -10136,9 +10299,14 @@ function wireEvents() {
       return;
     captureButton.disabled = true;
     captureButton.classList.add("is-loading");
-    setCaptureFeedback("Choose a display (if prompted) then drag to capture…", "info");
+    setCaptureFeedback("Choose a display then drag to capture…", "info");
     try {
-      const asset = await window.workspaceAPI.capture(activeWorkspace);
+      const displayId = await showDisplaySelectModal();
+      if (displayId === null) {
+        setCaptureFeedback("Screenshot canceled", "info", 2000);
+        return;
+      }
+      const asset = await window.workspaceAPI.capture(activeWorkspace, displayId);
       if (asset) {
         await addImageAsset(asset);
         setCaptureFeedback("Screenshot added to workspace", "success", 4000);
@@ -10154,6 +10322,9 @@ function wireEvents() {
     }
   });
   settingsClose.addEventListener("click", () => {
+    settingsModal.close();
+  });
+  settingsCloseX.addEventListener("click", () => {
     settingsModal.close();
   });
   openReferenceButton.addEventListener("click", () => {
@@ -10255,7 +10426,7 @@ function wireEvents() {
       setCanvasZoom(currentZoom * factor, { announce: true });
       return;
     }
-    if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && pages.length > 0) {
+    if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && event.ctrlKey && pages.length > 0) {
       event.preventDefault();
       if (!activePageId) {
         setActivePage(pages[0].id);
@@ -10360,6 +10531,10 @@ function wireEvents() {
 async function bootstrap() {
   const versionShort = "1.1.0".split(".").slice(0, 2).join(".");
   appNameElement.textContent = `ArtBoard v${versionShort}`;
+  const aboutVersionElement = document.getElementById("about-version");
+  if (aboutVersionElement) {
+    aboutVersionElement.textContent = `Version ${versionShort}`;
+  }
   wireEvents();
   await populateWorkspaces();
   renderPages();

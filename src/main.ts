@@ -130,37 +130,19 @@ function formatDisplayLabel(display: Electron.Display, index: number): string {
   const scale = display.scaleFactor ? ` @${display.scaleFactor}x` : '';
   const primarySuffix = display.id === screen.getPrimaryDisplay().id ? ' (Primary)' : '';
   const label = display.label || `Display ${index + 1}`;
-  return `${index + 1}. ${label} ${size}${scale}${primarySuffix}`;
+  return `${label} ${size}${scale}${primarySuffix}`;
 }
 
-async function selectCaptureDisplay(): Promise<Electron.Display | null> {
+function getDisplayList(): Array<{ id: number; label: string }> {
   const displays = screen.getAllDisplays();
-  if (displays.length === 0) {
-    return null;
-  }
-  if (displays.length === 1) {
-    return displays[0];
-  }
+  return displays.map((display, index) => ({
+    id: display.id,
+    label: formatDisplayLabel(display, index),
+  }));
+}
 
-  const buttons = displays.map((display, index) => formatDisplayLabel(display, index));
-  const windowForDialog = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
-  const dialogTarget = windowForDialog ?? undefined;
-  const { response } = await dialog.showMessageBox(dialogTarget, {
-    type: 'question',
-    buttons: [...buttons, 'Cancel'],
-    defaultId: 0,
-    cancelId: buttons.length,
-    title: 'Select Display',
-    message: 'Which display would you like to capture?',
-    detail: 'Choose the screen to capture, then draw the region you want to add to your workspace.',
-    normalizeAccessKeys: true,
-  });
-
-  if (response === buttons.length) {
-    return null;
-  }
-
-  return displays[response] ?? null;
+function getDisplayById(id: number): Electron.Display | null {
+  return screen.getAllDisplays().find(d => d.id === id) ?? null;
 }
 
 async function loadNativeImageForAsset(asset: AssetDetail): Promise<Electron.NativeImage> {
@@ -555,6 +537,7 @@ async function ensureScreenshotsInstance(): Promise<ScreenshotsInstance> {
 
 async function captureScreenshot(
   workspace: string,
+  displayId?: number,
 ): Promise<WorkspaceAssetDescriptor | null> {
   const instance = await ensureScreenshotsInstance();
   if (captureInFlight) {
@@ -562,7 +545,17 @@ async function captureScreenshot(
   }
   captureInFlight = true;
 
-  const targetDisplay = await selectCaptureDisplay();
+  let targetDisplay: Electron.Display | null = null;
+
+  if (displayId !== undefined) {
+    targetDisplay = getDisplayById(displayId);
+  } else {
+    const displays = screen.getAllDisplays();
+    if (displays.length > 0) {
+      targetDisplay = displays[0];
+    }
+  }
+
   if (!targetDisplay) {
     captureInFlight = false;
     return null;
@@ -773,9 +766,10 @@ function registerIpcHandlers() {
     await workspaceManager.deleteWorkspace(workspace);
     return true;
   });
+  ipcMain.handle('workspace:get-displays', () => getDisplayList());
   ipcMain.handle(
     'workspace:capture-screenshot',
-    (_event, workspace: string) => captureScreenshot(workspace),
+    (_event, workspace: string, displayId?: number) => captureScreenshot(workspace, displayId),
   );
   ipcMain.handle(
     'workspace:read-asset',

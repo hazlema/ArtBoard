@@ -265,54 +265,150 @@
       </form>
     </dialog>
 
+    <dialog id="display-select-modal" class="app-modal">
+      <form id="display-select-form" class="app-modal__form" method="dialog">
+        <h3>Select Display</h3>
+        <p class="display-select__description">Choose the screen to capture, then draw the region you want to add to your workspace.</p>
+        <ul id="display-select-list" class="display-select__list"></ul>
+        <div class="app-modal__actions">
+          <button type="button" class="secondary" id="display-select-cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="rename-modal" class="app-modal">
+      <form id="rename-form" class="app-modal__form" method="dialog">
+        <h3 id="rename-title">Rename</h3>
+        <label class="app-modal__field">
+          <span>Name</span>
+          <input
+            id="rename-input"
+            name="name"
+            type="text"
+            autocomplete="off"
+            required
+            maxlength="120"
+          />
+        </label>
+        <p id="rename-error" class="app-modal__error" role="alert"></p>
+        <div class="app-modal__actions">
+          <button type="button" class="secondary" id="rename-cancel">Cancel</button>
+          <button type="submit" id="rename-submit">Rename</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-modal" class="app-modal">
+      <form id="confirm-form" class="app-modal__form" method="dialog">
+        <h3 id="confirm-title">Confirm</h3>
+        <p id="confirm-message" class="confirm-message"></p>
+        <div class="app-modal__actions">
+          <button type="button" class="secondary" id="confirm-cancel">Cancel</button>
+          <button type="submit" id="confirm-submit" class="danger">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="settings-modal" class="modal modal--large">
-      <section class="settings">
-        <header class="settings__header">
+      <article class="settings">
+        <header class="settings-header">
           <h2>Settings</h2>
+          <button id="settings-close-x" class="panel-close-btn" type="button" aria-label="Close">✕</button>
         </header>
-        <nav class="settings__tabs" role="tablist">
-          <button class="settings__tab is-active" type="button" data-tab="workspaces" aria-selected="true">
-            Workspaces
+
+        <nav class="settings-tabs" role="tablist">
+          <button class="tab-btn tab-btn--active" type="button" data-tab="workspaces" aria-selected="true">
+            <span class="tab-icon">✨</span>
+            <span>Workspaces</span>
           </button>
-          <button class="settings__tab" type="button" data-tab="pages" aria-selected="false">
-            Pages
+          <button class="tab-btn" type="button" data-tab="pages" aria-selected="false">
+            <span class="tab-icon">📄</span>
+            <span>Pages</span>
           </button>
-          <button class="settings__tab" type="button" data-tab="about" aria-selected="false">
-            About
+          <button class="tab-btn" type="button" data-tab="preferences" aria-selected="false">
+            <span class="tab-icon">⚙️</span>
+            <span>Settings</span>
+          </button>
+          <button class="tab-btn" type="button" data-tab="about" aria-selected="false">
+            <span class="tab-icon">ℹ️</span>
+            <span>About</span>
           </button>
         </nav>
-        <div class="settings__panels">
-          <section class="settings__panel is-active" data-panel="workspaces">
-            <header class="panel-header">
-              <h3>Manage Workspaces</h3>
-              <button id="settings-workspace-create" class="icon-btn" type="button">+ New</button>
-            </header>
-            <ul id="settings-workspace-list" class="settings-list"></ul>
-          </section>
-          <section class="settings__panel" data-panel="pages">
-            <header class="panel-header">
-              <h3>Manage Pages</h3>
-              <button id="settings-page-create" class="icon-btn" type="button">+ New</button>
-            </header>
-            <ul id="settings-page-list" class="settings-list"></ul>
-          </section>
-          <section class="settings__panel" data-panel="about">
-            <div class="about">
-              <div class="about__logo">✨</div>
-              <p class="about__version">Version 1.0.0</p>
-              <p class="about__description">
-                Your infinite visual workspace for organizing screenshots, references, and inspiration.
-              </p>
-              <a class="about__link" href="https://github.com/hazlema/ArtBoard" target="_blank" rel="noreferrer">
-                View on GitHub →
-              </a>
+
+        <div class="settings-panels">
+          <!-- Workspaces Panel -->
+          <div class="settings-panel settings-panel--active" data-panel="workspaces">
+            <div class="panel-header-section">
+              <div>
+                <h3>Manage Workspaces</h3>
+                <p class="panel-description">Create, rename, and organize your workspaces</p>
+              </div>
+              <button id="settings-workspace-create" class="icon-btn icon-btn--large" type="button">
+                <span>+</span>
+                <span>New Workspace</span>
+              </button>
             </div>
-          </section>
+            <div id="settings-workspace-list" class="settings-list"></div>
+          </div>
+
+          <!-- Pages Panel -->
+          <div class="settings-panel" data-panel="pages">
+            <div class="panel-header-section">
+              <div>
+                <h3>Manage Pages</h3>
+                <p class="panel-description">Organize pages in your current workspace</p>
+              </div>
+              <button id="settings-page-create" class="icon-btn icon-btn--large" type="button">
+                <span>+</span>
+                <span>New Page</span>
+              </button>
+            </div>
+            <div id="settings-page-list" class="settings-list"></div>
+          </div>
+
+          <!-- Preferences Panel -->
+          <div class="settings-panel" data-panel="preferences">
+            <div class="panel-header-section">
+              <div>
+                <h3>Preferences</h3>
+                <p class="panel-description">Customize your Artboard experience</p>
+              </div>
+            </div>
+            <p class="panel-placeholder">Settings coming soon...</p>
+          </div>
+
+          <!-- About Panel -->
+          <div class="settings-panel" data-panel="about">
+            <div class="about-content">
+              <div class="about-logo">✨</div>
+              <h3 class="about-title">Artboard</h3>
+              <p class="about-version" id="about-version">Version 1.0.0</p>
+              <p class="about-description">
+                Your infinite visual workspace for organizing screenshots, references, and inspiration.
+                Built with Electron, Bun, and Fabric.js for creative minds.
+              </p>
+              <div class="about-links">
+                <a href="https://github.com/hazlema/ArtBoard" class="about-link" target="_blank" rel="noreferrer">
+                  <span class="link-icon">⭐</span>
+                  <span>GitHub</span>
+                </a>
+                <a href="https://github.com/hazlema/ArtBoard/issues" class="about-link" target="_blank" rel="noreferrer">
+                  <span class="link-icon">🐛</span>
+                  <span>Report Issue</span>
+                </a>
+              </div>
+              <div class="about-credits">
+                <p>Built with ❤️ for creative minds</p>
+                <p class="credits-tech">Electron • Bun • Fabric.js • TypeScript</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <footer class="settings__footer">
-          <button id="settings-close" class="btn btn-primary" type="button">Close</button>
+
+        <footer class="settings-footer">
+          <button id="settings-close" class="btn btn-primary" type="button">Done</button>
         </footer>
-      </section>
+      </article>
     </dialog>
 
     <dialog id="reference-modal" class="modal modal--reference">
