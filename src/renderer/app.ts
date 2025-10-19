@@ -8,6 +8,9 @@ import {
   type TPointerEventInfo,
 } from 'fabric';
 
+// APP_VERSION is injected at build time via --define flag in package.json
+declare const APP_VERSION: string;
+
 type FabricImage = InstanceType<typeof Image>;
 
 type FabricCanvas = InstanceType<typeof Canvas>;
@@ -91,6 +94,7 @@ const browserWindow = window as Window & {
   electronAPI?: Window['electronAPI'];
 };
 
+const appNameElement = document.querySelector<HTMLSpanElement>('#app-name')!;
 const workspaceMenuToggle =
   document.querySelector<HTMLButtonElement>('#workspace-menu-toggle')!;
 const workspaceDropdown =
@@ -2771,6 +2775,10 @@ function wireEvents() {
 }
 
 async function bootstrap() {
+  // Set app name with version (limit to major.minor)
+  const versionShort = APP_VERSION.split('.').slice(0, 2).join('.');
+  appNameElement.textContent = `ArtBoard v${versionShort}`;
+
   wireEvents();
   await populateWorkspaces();
   renderPages();

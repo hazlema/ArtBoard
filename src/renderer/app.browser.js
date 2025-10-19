@@ -8118,6 +8118,7 @@ var bh = Object.freeze({ __proto__: null, BaseFilter: Wa, BlackWhite: rh, BlendC
 // src/renderer/app.ts
 var isElectronEnvironment = Boolean(window.process?.versions?.electron);
 var browserWindow = window;
+var appNameElement = document.querySelector("#app-name");
 var workspaceMenuToggle = document.querySelector("#workspace-menu-toggle");
 var workspaceDropdown = workspaceMenuToggle.closest("[data-footer-dropdown]");
 var workspaceCreatePanelButton = document.querySelector("#workspace-create-panel");
@@ -10282,6 +10283,8 @@ function wireEvents() {
   });
 }
 async function bootstrap() {
+  const versionShort = "1.2.0".split(".").slice(0, 2).join(".");
+  appNameElement.textContent = `ArtBoard v${versionShort}`;
   wireEvents();
   await populateWorkspaces();
   renderPages();

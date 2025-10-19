@@ -1,6 +1,6 @@
 {
   "name": "artboard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Capture, remix, and share creative ideas effortlessly with Artboard Studio.",
   "author": "Frosty",
   "type": "module",
@@ -11,8 +11,8 @@
     "build": "rm -rf dist && bun run build:main && bun run build:renderer",
     "build:main": "bun build src/main.ts --outfile=dist/main.cjs --target=node --format=cjs --external electron --external electron-screenshots && bun build src/preload.ts --outfile=dist/preload.cjs --target=node --format=cjs --external electron",
     "build:renderer": "rm -rf dist/renderer && bun run browser:bundle && bun build src/renderer/index.html src/renderer/asset-viewer.html src/renderer/reference.html --outdir=dist/renderer --target=browser --splitting",
-    "browser:bundle": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm",
-    "browser:watch": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm --watch --no-clear-screen",
+    "browser:bundle": "node scripts/build-renderer.js",
+    "browser:watch": "node scripts/build-renderer.js --watch",
     "start": "electron .",
     "electron:run": "bun run build && electron .",
     "pack:linux": "rm -rf dist/renderer && bun run build && electron-builder --linux AppImage",
