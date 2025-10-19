@@ -217,6 +217,18 @@ async function openAssetViewerWindow(payload: { workspace: string; relativePath:
       removeViewerEntry(entry);
     });
 
+    // Register Ctrl+D / Cmd+D to toggle DevTools in asset viewer
+    viewerWindow.webContents.on('before-input-event', (event, input) => {
+      if ((input.control || input.meta) && input.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        if (viewerWindow.webContents.isDevToolsOpened()) {
+          viewerWindow.webContents.closeDevTools();
+        } else {
+          viewerWindow.webContents.openDevTools({ mode: 'detach' });
+        }
+      }
+    });
+
     await viewerWindow.loadFile(getAssetViewerEntry());
     viewerWindow.once('ready-to-show', () => {
       viewerWindow.show();
@@ -723,9 +735,17 @@ async function createWindow() {
     mainWindow = null;
   });
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
+  // Register Ctrl+D / Cmd+D to toggle DevTools
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if ((input.control || input.meta) && input.key.toLowerCase() === 'd') {
+      event.preventDefault();
+      if (mainWindow?.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools();
+      } else {
+        mainWindow?.webContents.openDevTools({ mode: 'detach' });
+      }
+    }
+  });
 }
 
 function registerIpcHandlers() {

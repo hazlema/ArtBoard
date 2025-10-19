@@ -2,7 +2,7 @@
   "name": "artboard",
   "version": "1.0.0",
   "description": "Capture, remix, and share creative ideas effortlessly with Artboard Studio.",
-  "author": "Artboard Team",
+  "author": "Frosty",
   "type": "module",
   "private": true,
   "main": "dist/main.cjs",
@@ -15,11 +15,11 @@
     "browser:watch": "bun build src/renderer/app.ts --outfile=src/renderer/app.browser.js --target=browser --format=esm --watch --no-clear-screen",
     "start": "electron .",
     "electron:run": "bun run build && electron .",
-    "pack:linux": "rm -rf dist && bun run build && electron-builder --linux AppImage",
-    "pack:win": "rm -rf dist && bun run build && electron-builder --win nsis --x64",
-    "pack:mac": "rm -rf dist && bun run build && electron-builder --mac zip --x64",
-    "pack:all": "rm -rf dist && bun run build && electron-builder --linux AppImage --win nsis --mac zip",
-    "pack:dir": "rm -rf dist && bun run build && electron-builder --dir"
+    "pack:linux": "rm -rf dist/renderer && bun run build && electron-builder --linux AppImage",
+    "pack:win": "rm -rf dist/renderer && bun run build && electron-builder --win nsis --x64",
+    "pack:mac": "rm -rf dist/renderer && bun run build && electron-builder --mac zip --x64",
+    "pack:all": "rm -rf dist/renderer && bun run build && electron-builder --linux AppImage --win nsis --mac zip",
+    "pack:dir": "rm -rf dist/renderer && bun run build && electron-builder --dir"
   },
   "build": {
     "appId": "com.frosty.artboard",
