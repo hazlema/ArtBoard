@@ -3009,6 +3009,11 @@ function wireEvents() {
       void setActivePage(pages[nextIndex].id);
       return;
     }
+    if (event.key === 'Home' && !isEditable) {
+      event.preventDefault();
+      fitToScreen({ announce: true });
+      return;
+    }
     if ((event.key === 'Delete' || event.key === 'Backspace') && !isEditable) {
       if (getActiveCanvasObjects().length > 0) {
         event.preventDefault();
