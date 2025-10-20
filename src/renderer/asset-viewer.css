@@ -24,19 +24,12 @@
   box-sizing: border-box;
 }
 
-html,
-body {
-  margin: 0;
-  height: 100%;
-  overflow: hidden;
-  background: radial-gradient(circle at top, rgba(9, 12, 40, 0.65), #050716 55%);
-  color: #ffffff;
-}
+/* Asset viewer styles for modal context */
 
 .viewer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  height: 100vh;
+  height: 100%;
   backdrop-filter: blur(24px);
 }
 

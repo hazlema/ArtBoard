@@ -8148,6 +8148,9 @@ var settingsClose = document.querySelector("#settings-close");
 var openReferenceButton = document.querySelector("#open-reference");
 var referenceModal = document.querySelector("#reference-modal");
 var referenceClose = document.querySelector("#reference-close");
+var assetViewerModal = document.querySelector("#asset-viewer-modal");
+var assetViewerModalClose = document.querySelector("#asset-viewer-modal-close");
+var assetViewerModalBody = document.querySelector("#asset-viewer-modal-body");
 var tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
 var panels = Array.from(document.querySelectorAll(".settings-panel"));
 var settingsCloseX = document.querySelector("#settings-close-x");
@@ -8374,6 +8377,19 @@ function createBrowserWorkspaceAPI() {
     },
     async readAsset() {
       return BROWSER_PLACEHOLDER_IMAGE;
+    },
+    async getAssetDetail(workspace, relativePath) {
+      console.info("workspaceAPI.getAssetDetail is unavailable in browser preview");
+      return {
+        workspace,
+        filename: relativePath.split("/").pop() || "image",
+        relativePath,
+        fileUrl: BROWSER_PLACEHOLDER_IMAGE,
+        path: relativePath,
+        absolutePath: relativePath,
+        sizeBytes: 0,
+        format: "png"
+      };
     },
     async openAssetViewer() {
       console.info("workspaceAPI.openAssetViewer is unavailable in browser preview");
@@ -9235,15 +9251,699 @@ function extractAssetMeta(object) {
   return meta;
 }
 var assetViewerOpening = false;
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "—";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+function initializeAssetViewerInModal(asset) {
+  const viewerRoot = assetViewerModalBody.querySelector(".viewer");
+  const imageElement = assetViewerModalBody.querySelector("#asset-image");
+  const nameElement = assetViewerModalBody.querySelector("#asset-name");
+  const pathElement = assetViewerModalBody.querySelector("#asset-path");
+  const formatElement = assetViewerModalBody.querySelector("#meta-format");
+  const dimensionElement = assetViewerModalBody.querySelector("#meta-dimensions");
+  const sizeElement = assetViewerModalBody.querySelector("#meta-size");
+  const workspaceElement = assetViewerModalBody.querySelector("#meta-workspace");
+  const relativeElement = assetViewerModalBody.querySelector("#meta-relative");
+  const updatedElement = assetViewerModalBody.querySelector("#meta-updated");
+  const feedbackElement = assetViewerModalBody.querySelector("#action-feedback");
+  const saveAsModal = assetViewerModalBody.querySelector("#save-as-modal");
+  const resizeModal = assetViewerModalBody.querySelector("#resize-modal");
+  const cropPanel = assetViewerModalBody.querySelector("#crop-panel");
+  const convertForm = assetViewerModalBody.querySelector("#convert-form");
+  const convertFormat = assetViewerModalBody.querySelector("#convert-format");
+  const resizeForm = assetViewerModalBody.querySelector("#resize-form");
+  const resizeWidth = assetViewerModalBody.querySelector("#resize-width");
+  const resizeHeight = assetViewerModalBody.querySelector("#resize-height");
+  const resizeLock = assetViewerModalBody.querySelector("#resize-lock-aspect");
+  const cropForm = assetViewerModalBody.querySelector("#crop-form");
+  const cropX = assetViewerModalBody.querySelector("#crop-x");
+  const cropY = assetViewerModalBody.querySelector("#crop-y");
+  const cropWidth = assetViewerModalBody.querySelector("#crop-width");
+  const cropHeight = assetViewerModalBody.querySelector("#crop-height");
+  const cropApplyButton = assetViewerModalBody.querySelector("#crop-apply");
+  const cropOverlay = assetViewerModalBody.querySelector("#crop-overlay");
+  const cropSelectionElement = assetViewerModalBody.querySelector("#crop-selection");
+  const cropSelectionLabel = assetViewerModalBody.querySelector("#crop-selection-label");
+  let cropModeActive = false;
+  let activeSelection = null;
+  let cropDragState = null;
+  let cropPointerId = null;
+  let imageRect = null;
+  let overlayRect = null;
+  const MIN_CROP_SIZE = 2;
+  const assetData = asset;
+  viewerRoot.dataset.loading = "false";
+  nameElement.textContent = assetData.filename;
+  pathElement.textContent = assetData.absolutePath;
+  formatElement.textContent = assetData.format?.toUpperCase() || "—";
+  sizeElement.textContent = formatBytes(assetData.sizeBytes || 0);
+  workspaceElement.textContent = assetData.workspace;
+  relativeElement.textContent = assetData.relativePath;
+  updatedElement.textContent = assetData.updatedAt ? new Date(assetData.updatedAt).toLocaleString() : "—";
+  const cacheToken = Date.now();
+  imageElement.src = `${assetData.fileUrl}?v=${cacheToken}`;
+  const copyButton = assetViewerModalBody.querySelector("#action-copy");
+  const saveAsButton = assetViewerModalBody.querySelector("#action-save-as");
+  const resizeButton = assetViewerModalBody.querySelector("#action-resize");
+  const cropButton = assetViewerModalBody.querySelector("#action-crop");
+  const setFeedback = (message, tone = "info") => {
+    feedbackElement.dataset.tone = tone;
+    feedbackElement.textContent = message;
+    setTimeout(() => {
+      feedbackElement.textContent = "";
+    }, 3000);
+  };
+  copyButton.addEventListener("click", async () => {
+    try {
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback("Image not loaded", "error");
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setFeedback("Canvas not supported", "error");
+        return;
+      }
+      ctx.drawImage(imageElement, 0, 0);
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback("Failed to create image data", "error");
+          return;
+        }
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [blob.type]: blob
+            })
+          ]);
+          setFeedback("Copied to clipboard", "success");
+        } catch (clipboardError) {
+          console.error("Clipboard write failed", clipboardError);
+          setFeedback("Copy failed - clipboard permission denied", "error");
+        }
+      }, "image/png");
+    } catch (error) {
+      console.error("Failed to copy asset", error);
+      setFeedback("Copy failed", "error");
+    }
+  }, { once: false });
+  saveAsButton.addEventListener("click", () => {
+    if (!saveAsModal.open) {
+      saveAsModal.showModal();
+    }
+    feedbackElement.textContent = "";
+  }, { once: false });
+  resizeButton.addEventListener("click", () => {
+    if (imageElement.naturalWidth && imageElement.naturalHeight) {
+      resizeWidth.value = String(imageElement.naturalWidth);
+      resizeHeight.value = String(imageElement.naturalHeight);
+    }
+    if (!resizeModal.open) {
+      resizeModal.showModal();
+    }
+    feedbackElement.textContent = "";
+  }, { once: false });
+  const refreshCropMetrics = () => {
+    imageRect = imageElement.getBoundingClientRect();
+    overlayRect = cropOverlay.getBoundingClientRect();
+    return Boolean(imageRect && overlayRect && imageRect.width > 0 && imageRect.height > 0 && overlayRect.width > 0 && overlayRect.height > 0);
+  };
+  const naturalFromPointer = (event, allowOutside = false) => {
+    if (!imageRect || imageRect.width === 0 || imageRect.height === 0) {
+      return null;
+    }
+    if (!imageElement.naturalWidth || !imageElement.naturalHeight) {
+      return null;
+    }
+    if (!allowOutside && (event.clientX < imageRect.left || event.clientX > imageRect.right || event.clientY < imageRect.top || event.clientY > imageRect.bottom)) {
+      return null;
+    }
+    const displayX = Math.max(0, Math.min(event.clientX - imageRect.left, imageRect.width));
+    const displayY = Math.max(0, Math.min(event.clientY - imageRect.top, imageRect.height));
+    const naturalX = displayX / imageRect.width * imageElement.naturalWidth;
+    const naturalY = displayY / imageRect.height * imageElement.naturalHeight;
+    return {
+      x: Math.max(0, Math.min(naturalX, imageElement.naturalWidth)),
+      y: Math.max(0, Math.min(naturalY, imageElement.naturalHeight))
+    };
+  };
+  const selectionToDisplay = (selection) => {
+    if (!imageRect || !overlayRect || !imageElement.naturalWidth || !imageElement.naturalHeight) {
+      return null;
+    }
+    const scaleX = imageRect.width / imageElement.naturalWidth;
+    const scaleY = imageRect.height / imageElement.naturalHeight;
+    const offsetX = imageRect.left - overlayRect.left;
+    const offsetY = imageRect.top - overlayRect.top;
+    return {
+      left: offsetX + selection.x * scaleX,
+      top: offsetY + selection.y * scaleY,
+      width: Math.max(selection.width * scaleX, 1),
+      height: Math.max(selection.height * scaleY, 1)
+    };
+  };
+  const renderSelection = (selection) => {
+    activeSelection = selection;
+    if (!cropModeActive) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = "false";
+      return;
+    }
+    if (!selection) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = "false";
+      if (cropX && cropY && cropWidth && cropHeight) {
+        cropX.value = "0";
+        cropY.value = "0";
+        cropWidth.value = imageElement.naturalWidth ? String(Math.round(imageElement.naturalWidth)) : "0";
+        cropHeight.value = imageElement.naturalHeight ? String(Math.round(imageElement.naturalHeight)) : "0";
+      }
+      return;
+    }
+    if (!refreshCropMetrics()) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = "false";
+      return;
+    }
+    const display = selectionToDisplay(selection);
+    if (!display) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = "false";
+      return;
+    }
+    cropSelectionElement.hidden = false;
+    cropOverlay.dataset.hasSelection = "true";
+    cropSelectionElement.style.transform = `translate(${display.left}px, ${display.top}px)`;
+    cropSelectionElement.style.width = `${display.width}px`;
+    cropSelectionElement.style.height = `${display.height}px`;
+    cropSelectionLabel.textContent = `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
+    if (cropX && cropY && cropWidth && cropHeight) {
+      cropX.value = String(Math.round(selection.x));
+      cropY.value = String(Math.round(selection.y));
+      cropWidth.value = String(Math.round(selection.width));
+      cropHeight.value = String(Math.round(selection.height));
+    }
+  };
+  const selectionFromPoints = (a2, b2) => {
+    const left = Math.min(a2.x, b2.x);
+    const top = Math.min(a2.y, b2.y);
+    const right = Math.max(a2.x, b2.x);
+    const bottom = Math.max(a2.y, b2.y);
+    const width = Math.max(right - left, MIN_CROP_SIZE);
+    const height = Math.max(bottom - top, MIN_CROP_SIZE);
+    return { x: left, y: top, width, height };
+  };
+  const enterCropMode = () => {
+    if (!imageElement.naturalWidth || !imageElement.naturalHeight) {
+      setFeedback("Image not ready for cropping", "error");
+      return;
+    }
+    cropModeActive = true;
+    cropButton.textContent = "End Crop";
+    cropButton.classList.add("is-active");
+    cropButton.dataset.tone = "alert";
+    closeModal(saveAsModal);
+    closeModal(resizeModal);
+    cropOverlay.hidden = false;
+    cropOverlay.dataset.active = "true";
+    cropOverlay.setAttribute("aria-hidden", "false");
+    cropSelectionElement.hidden = !activeSelection;
+    cropPanel.classList.remove("hidden");
+    setFeedback("Drag on the image to select the crop area", "info");
+    requestAnimationFrame(() => {
+      refreshCropMetrics();
+      renderSelection(activeSelection);
+    });
+  };
+  const exitCropMode = (options) => {
+    if (options?.resetSelection) {
+      activeSelection = null;
+    }
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropDragState = null;
+    cropOverlay.classList.remove("is-dragging");
+    cropModeActive = false;
+    cropButton.textContent = "Crop Selection…";
+    cropButton.classList.remove("is-active");
+    cropButton.removeAttribute("data-tone");
+    cropOverlay.dataset.active = "false";
+    cropOverlay.dataset.hasSelection = "false";
+    cropOverlay.hidden = true;
+    cropOverlay.setAttribute("aria-hidden", "true");
+    cropSelectionElement.hidden = true;
+    cropPanel.classList.add("hidden");
+    renderSelection(activeSelection);
+  };
+  const closeModal = (dialog) => {
+    if (dialog.open) {
+      dialog.close();
+    }
+  };
+  cropButton.addEventListener("click", () => {
+    if (cropModeActive) {
+      applyCrop();
+    } else {
+      enterCropMode();
+    }
+  }, { once: false });
+  cropOverlay.addEventListener("pointerdown", (event) => {
+    if (!cropModeActive)
+      return;
+    if (!refreshCropMetrics())
+      return;
+    const pointer = naturalFromPointer(event);
+    if (!pointer)
+      return;
+    event.preventDefault();
+    cropPointerId = event.pointerId;
+    cropOverlay.setPointerCapture(event.pointerId);
+    cropOverlay.classList.add("is-dragging");
+    cropDragState = {
+      mode: "create",
+      origin: pointer,
+      pointerId: event.pointerId
+    };
+    renderSelection({ x: pointer.x, y: pointer.y, width: MIN_CROP_SIZE, height: MIN_CROP_SIZE });
+  });
+  cropOverlay.addEventListener("pointermove", (event) => {
+    if (!cropModeActive || !cropDragState)
+      return;
+    const pointer = naturalFromPointer(event, true);
+    if (!pointer)
+      return;
+    if (cropDragState.mode === "create") {
+      renderSelection(selectionFromPoints(cropDragState.origin, pointer));
+    }
+  });
+  cropOverlay.addEventListener("pointerup", (event) => {
+    if (!cropModeActive)
+      return;
+    const pointer = naturalFromPointer(event, true);
+    if (cropDragState && cropDragState.mode === "create" && pointer) {
+      renderSelection(selectionFromPoints(cropDragState.origin, pointer));
+    }
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropOverlay.classList.remove("is-dragging");
+    cropDragState = null;
+  });
+  cropOverlay.addEventListener("pointercancel", () => {
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropOverlay.classList.remove("is-dragging");
+    cropDragState = null;
+  });
+  const applyCrop = async () => {
+    try {
+      const x2 = Number(cropX.value);
+      const y2 = Number(cropY.value);
+      const width = Number(cropWidth.value);
+      const height = Number(cropHeight.value);
+      if (!width || !height || width < 1 || height < 1) {
+        setFeedback("Invalid crop dimensions", "error");
+        return;
+      }
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback("Image not loaded", "error");
+        return;
+      }
+      if (x2 < 0 || y2 < 0 || x2 + width > imageElement.naturalWidth || y2 + height > imageElement.naturalHeight) {
+        setFeedback("Crop area out of bounds", "error");
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setFeedback("Canvas not supported", "error");
+        return;
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(imageElement, x2, y2, width, height, 0, 0, width, height);
+      const originalFormat = assetData.format?.toLowerCase() || "png";
+      const mimeType = originalFormat === "jpg" || originalFormat === "jpeg" ? "image/jpeg" : originalFormat === "webp" ? "image/webp" : "image/png";
+      const quality = mimeType === "image/png" ? undefined : 0.92;
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback("Crop failed", "error");
+          return;
+        }
+        try {
+          const buffer = new Uint8Array(await blob.arrayBuffer());
+          await window.workspaceAPI.updateAsset(assetData.workspace, assetData.relativePath, buffer);
+          setFeedback("Image cropped successfully", "success");
+          exitCropMode({ resetSelection: true });
+          const cacheToken2 = Date.now();
+          imageElement.src = `${assetData.fileUrl}?v=${cacheToken2}`;
+        } catch (error) {
+          console.error("Failed to update asset", error);
+          setFeedback("Failed to save cropped image", "error");
+        }
+      }, mimeType, quality);
+    } catch (error) {
+      console.error("Crop failed", error);
+      setFeedback("Crop failed", "error");
+    }
+  };
+  cropApplyButton.addEventListener("click", () => {
+    applyCrop();
+  });
+  cropForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    applyCrop();
+  });
+  assetViewerModalBody.querySelectorAll('[data-close-panel="crop"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      cropPanel.classList.add("hidden");
+      setFeedback("", "info");
+    });
+  });
+  imageElement.addEventListener("load", () => {
+    dimensionElement.textContent = imageElement.naturalWidth && imageElement.naturalHeight ? `${imageElement.naturalWidth} × ${imageElement.naturalHeight}` : "—";
+  });
+  convertForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const format = convertFormat.value;
+    try {
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback("Image not loaded", "error");
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setFeedback("Canvas not supported", "error");
+        return;
+      }
+      ctx.drawImage(imageElement, 0, 0);
+      const mimeType = format === "png" ? "image/png" : format === "jpeg" ? "image/jpeg" : "image/webp";
+      const quality = format === "png" ? undefined : 0.92;
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setFeedback("Conversion failed", "error");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        const ext = format === "jpeg" ? "jpg" : format;
+        const baseName = assetData.filename.replace(/\.[^/.]+$/, "");
+        link.download = `${baseName}.${ext}`;
+        link.click();
+        URL.revokeObjectURL(url);
+        setFeedback(`Saved as ${format.toUpperCase()}`, "success");
+        saveAsModal.close();
+      }, mimeType, quality);
+    } catch (error) {
+      console.error("Format conversion failed", error);
+      setFeedback("Conversion failed", "error");
+    }
+  });
+  resizeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const width = Number(resizeWidth.value);
+      const height = Number(resizeHeight.value);
+      if (!width || !height || width < 1 || height < 1) {
+        setFeedback("Invalid dimensions", "error");
+        return;
+      }
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback("Image not loaded", "error");
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setFeedback("Canvas not supported", "error");
+        return;
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(imageElement, 0, 0, width, height);
+      const originalFormat = assetData.format?.toLowerCase() || "png";
+      const mimeType = originalFormat === "jpg" || originalFormat === "jpeg" ? "image/jpeg" : originalFormat === "webp" ? "image/webp" : "image/png";
+      const quality = mimeType === "image/png" ? undefined : 0.92;
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback("Resize failed", "error");
+          return;
+        }
+        try {
+          const buffer = new Uint8Array(await blob.arrayBuffer());
+          await window.workspaceAPI.updateAsset(assetData.workspace, assetData.relativePath, buffer);
+          setFeedback(`Resized to ${width}×${height}`, "success");
+          resizeModal.close();
+          const cacheToken2 = Date.now();
+          imageElement.src = `${assetData.fileUrl}?v=${cacheToken2}`;
+        } catch (error) {
+          console.error("Failed to update asset", error);
+          setFeedback("Failed to save resized image", "error");
+        }
+      }, mimeType, quality);
+    } catch (error) {
+      console.error("Resize failed", error);
+      setFeedback("Resize failed", "error");
+    }
+  });
+  resizeLock.addEventListener("change", () => {
+    if (resizeLock.checked && imageElement.naturalWidth && imageElement.naturalHeight) {
+      const width = Number(resizeWidth.value || imageElement.naturalWidth);
+      const aspect = imageElement.naturalHeight / imageElement.naturalWidth;
+      resizeHeight.value = String(Math.round(width * aspect));
+    }
+  });
+  resizeWidth.addEventListener("input", () => {
+    if (resizeLock.checked && imageElement.naturalWidth && imageElement.naturalHeight) {
+      const width = Number(resizeWidth.value || imageElement.naturalWidth);
+      const aspect = imageElement.naturalHeight / imageElement.naturalWidth;
+      resizeHeight.value = String(Math.max(1, Math.round(width * aspect)));
+    }
+  });
+  assetViewerModalBody.querySelectorAll("[data-close-modal]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.closeModal;
+      if (target === "save-as") {
+        saveAsModal.close();
+      } else if (target === "resize") {
+        resizeModal.close();
+      }
+      feedbackElement.textContent = "";
+    });
+  });
+  saveAsModal.addEventListener("cancel", () => {
+    feedbackElement.textContent = "";
+  });
+  resizeModal.addEventListener("cancel", () => {
+    feedbackElement.textContent = "";
+  });
+}
+function openAssetViewerModal(asset) {
+  if (assetViewerModal.open) {
+    console.warn("Asset viewer modal is already open");
+    return;
+  }
+  assetViewerModalBody.innerHTML = "";
+  const viewerElement = document.createElement("div");
+  viewerElement.className = "viewer";
+  viewerElement.innerHTML = `
+    <main class="viewer__preview">
+      <div class="viewer__image-frame">
+        <img id="asset-image" alt="" />
+        <div
+          id="crop-overlay"
+          class="crop-overlay"
+          aria-hidden="true"
+          hidden
+        >
+          <div
+            id="crop-selection"
+            class="crop-overlay__selection"
+            hidden
+          >
+            <span
+              id="crop-selection-label"
+              class="crop-overlay__label"
+            >
+            </span>
+            <div class="crop-overlay__handle crop-overlay__handle--nw" data-handle="nw"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--n" data-handle="n"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--ne" data-handle="ne"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--e" data-handle="e"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--se" data-handle="se"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--s" data-handle="s"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--sw" data-handle="sw"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--w" data-handle="w"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <aside class="viewer__details">
+      <header class="viewer__header">
+        <h1 id="asset-name">Asset</h1>
+        <p id="asset-path" class="viewer__subheading"></p>
+      </header>
+      <section class="viewer__meta">
+        <h2>Details</h2>
+        <dl>
+          <div>
+            <dt>Format</dt>
+            <dd id="meta-format">—</dd>
+          </div>
+          <div>
+            <dt>Dimensions</dt>
+            <dd id="meta-dimensions">—</dd>
+          </div>
+          <div>
+            <dt>File Size</dt>
+            <dd id="meta-size">—</dd>
+          </div>
+          <div>
+            <dt>Workspace</dt>
+            <dd id="meta-workspace">—</dd>
+          </div>
+          <div>
+            <dt>Relative Path</dt>
+            <dd id="meta-relative">—</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd id="meta-updated">—</dd>
+          </div>
+        </dl>
+      </section>
+      <section class="viewer__actions">
+        <button id="action-copy" type="button">Copy to Clipboard</button>
+        <button id="action-save-as" type="button">Save As…</button>
+        <button id="action-resize" type="button">Resize…</button>
+        <button id="action-crop" type="button">Crop Selection…</button>
+        <output id="action-feedback" role="status" aria-live="polite"></output>
+      </section>
+      <section id="crop-panel" class="viewer__panel hidden">
+        <h3>Crop</h3>
+        <p class="crop-panel__intro">
+          Drag on the image to select the area to keep. Adjust using the handles, then apply the crop.
+        </p>
+        <div class="crop-panel__actions">
+          <button id="crop-apply" type="button">Apply Crop</button>
+          <button type="button" class="secondary" data-close-panel="crop">
+            Cancel
+          </button>
+        </div>
+        <details class="crop-panel__details">
+          <summary>Precise input</summary>
+          <form id="crop-form">
+            <div class="fields">
+              <label>
+                X
+                <input id="crop-x" type="number" min="0" value="0" required />
+              </label>
+              <label>
+                Y
+                <input id="crop-y" type="number" min="0" value="0" required />
+              </label>
+            </div>
+            <div class="fields">
+              <label>
+                Width
+                <input id="crop-width" type="number" min="1" required />
+              </label>
+              <label>
+                Height
+                <input id="crop-height" type="number" min="1" required />
+              </label>
+            </div>
+            <button type="submit">Apply Precise Crop</button>
+          </form>
+        </details>
+      </section>
+    </aside>
+    <dialog id="save-as-modal" class="viewer-modal">
+      <form id="convert-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Save As</h3>
+        <label>
+          Target Format
+          <select id="convert-format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="webp">WebP</option>
+          </select>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="save-as">
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="resize-modal" class="viewer-modal">
+      <form id="resize-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Resize</h3>
+        <div class="fields">
+          <label>
+            Width (px)
+            <input id="resize-width" type="number" min="1" required />
+          </label>
+          <label>
+            Height (px)
+            <input id="resize-height" type="number" min="1" required />
+          </label>
+        </div>
+        <label class="checkbox">
+          <input id="resize-lock-aspect" type="checkbox" checked />
+          <span>Lock aspect ratio</span>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="resize">
+            Cancel
+          </button>
+          <button type="submit">Resize &amp; Save</button>
+        </div>
+      </form>
+    </dialog>
+  `;
+  assetViewerModalBody.appendChild(viewerElement);
+  setTimeout(() => {
+    initializeAssetViewerInModal(asset);
+  }, 0);
+  assetViewerModal.showModal();
+}
 function handleImageDoubleClick(event) {
-  const target = event.target;
-  const meta = extractAssetMeta(target);
+  const meta = extractAssetMeta(event.target);
   if (!meta || assetViewerOpening) {
     return;
   }
   assetViewerOpening = true;
-  window.workspaceAPI.openAssetViewer({ workspace: meta.workspace, relativePath: meta.relativePath }).catch((error) => {
-    console.error("Failed to open asset viewer", error);
+  window.workspaceAPI.getAssetDetail(meta.workspace, meta.relativePath).then((asset) => {
+    openAssetViewerModal(asset);
+  }).catch((error) => {
+    console.error("Failed to get asset details", error);
   }).finally(() => {
     setTimeout(() => {
       assetViewerOpening = false;
@@ -10333,6 +11033,15 @@ function wireEvents() {
   settingsCloseX.addEventListener("click", () => {
     settingsModal.close();
   });
+  document.querySelectorAll(".about-link").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      const href = link.getAttribute("href");
+      if (href && window.electronAPI?.openExternal) {
+        window.electronAPI.openExternal(href);
+      }
+    });
+  });
   openReferenceButton.addEventListener("click", () => {
     closeActiveDropdown();
     referenceModal.showModal();
@@ -10345,6 +11054,18 @@ function wireEvents() {
       referenceModal.close();
     }
   });
+  assetViewerModalClose.addEventListener("click", () => {
+    closeAssetViewerModal();
+  });
+  assetViewerModal.addEventListener("click", (event) => {
+    if (event.target === assetViewerModal) {
+      closeAssetViewerModal();
+    }
+  });
+  function closeAssetViewerModal() {
+    assetViewerModal.close();
+    assetViewerModalBody.innerHTML = "";
+  }
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab ?? "workspaces";

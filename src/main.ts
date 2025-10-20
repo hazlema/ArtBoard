@@ -44,25 +44,12 @@ let screenshotsInitPromise: Promise<ScreenshotsInstance> | null = null;
 let captureInFlight = false;
 let protocolRegistered = false;
 
-type ViewerRegistryEntry = {
-  token: string;
-  asset: AssetDetail;
-  windowId: number;
-};
-
-type AssetUpdateResponse =
-  | { success: true; asset: AssetDetail }
-  | { success: false; error?: string };
-
 type ClipboardInspectResult = {
   canPaste: boolean;
   hasImage: boolean;
   hasFile: boolean;
   hasUrl: boolean;
 };
-
-const assetViewerWindows = new Map<number, ViewerRegistryEntry>();
-const assetViewerTokens = new Map<string, ViewerRegistryEntry>();
 
 const APP_STATE_FILE = 'app-state.json';
 
@@ -158,331 +145,24 @@ async function loadNativeImageForAsset(asset: AssetDetail): Promise<Electron.Nat
   return image;
 }
 
-function getViewerEntryByToken(token: string): ViewerRegistryEntry | undefined {
-  return assetViewerTokens.get(token);
-}
+// Asset viewer window functionality removed - now uses modal
 
-function removeViewerEntry(entry: ViewerRegistryEntry) {
-  assetViewerTokens.delete(entry.token);
-  assetViewerWindows.delete(entry.windowId);
-}
-
-async function openAssetViewerWindow(payload: { workspace: string; relativePath: string }): Promise<void> {
-  try {
-    const asset = await workspaceManager.getAssetDetail(payload.workspace, payload.relativePath);
-
-    // Position the asset viewer relative to the main window
-    const windowOptions: Electron.BrowserWindowConstructorOptions = {
-      width: 1280,
-      height: 760,
-      minWidth: 900,
-      minHeight: 600,
-      backgroundColor: '#111111',
-      title: `Asset • ${asset.filename}`,
-      autoHideMenuBar: true,
-      show: false,
-      alwaysOnTop: true,
-      webPreferences: {
-        preload: getPreloadPath(),
-        contextIsolation: true,
-        nodeIntegration: false,
+// Register custom protocol before app ready
+if (protocol && protocol.registerSchemesAsPrivileged) {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: 'artboard',
+      privileges: {
+        secure: true,
+        standard: true,
+        bypassCSP: true,
+        corsEnabled: true,
+        supportFetchAPI: true,
+        stream: true,
       },
-    };
-
-    if (mainWindow) {
-      const mainBounds = mainWindow.getBounds();
-      // Center the asset viewer relative to the main window
-      windowOptions.x = Math.max(0, mainBounds.x + (mainBounds.width - 1280) / 2);
-      windowOptions.y = Math.max(0, mainBounds.y + (mainBounds.height - 760) / 2);
-    }
-
-    const viewerWindow = new BrowserWindow(windowOptions);
-
-    const entry: ViewerRegistryEntry = {
-      token: randomUUID(),
-      asset,
-      windowId: viewerWindow.webContents.id,
-    };
-
-    assetViewerWindows.set(viewerWindow.webContents.id, entry);
-    assetViewerTokens.set(entry.token, entry);
-
-    viewerWindow.on('closed', () => {
-      removeViewerEntry(entry);
-    });
-
-    // Register Ctrl+D / Cmd+D to toggle DevTools in asset viewer
-    viewerWindow.webContents.on('before-input-event', (event, input) => {
-      if ((input.control || input.meta) && input.key.toLowerCase() === 'd') {
-        event.preventDefault();
-        if (viewerWindow.webContents.isDevToolsOpened()) {
-          viewerWindow.webContents.closeDevTools();
-        } else {
-          viewerWindow.webContents.openDevTools({ mode: 'detach' });
-        }
-      }
-    });
-
-    // Show immediately to reduce perceived lag
-    viewerWindow.show();
-    await viewerWindow.loadFile(getAssetViewerEntry());
-  } catch (error) {
-    console.error('Failed to open asset viewer', error);
-  }
-}
-
-function registerAssetViewerHandlers() {
-  ipcMain.on('asset-viewer:ready', (event) => {
-    const entry = assetViewerWindows.get(event.sender.id);
-    if (!entry) {
-      return;
-    }
-    event.sender.send('asset-viewer:data', {
-      ...entry.asset,
-      id: entry.token,
-      fileName: entry.asset.filename,
-    });
-  });
-
-  ipcMain.handle('asset-viewer:copy', async (_event, payload: { id: string }) => {
-    const entry = getViewerEntryByToken(payload.id);
-    if (!entry) {
-      return false;
-    }
-    try {
-      const image = await loadNativeImageForAsset(entry.asset);
-      clipboard.writeImage(image);
-      return true;
-    } catch (error) {
-      console.error('Copy to clipboard failed', error);
-      return false;
-    }
-  });
-
-  ipcMain.handle('asset-viewer:save', async (event, payload: { id: string }) => {
-    const entry = getViewerEntryByToken(payload.id);
-    if (!entry) {
-      return false;
-    }
-    const browserWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
-    const { canceled, filePath } = await dialog.showSaveDialog(browserWindow, {
-      defaultPath: entry.asset.filename,
-      filters: [
-        { name: `${entry.asset.format.toUpperCase()} Image`, extensions: [entry.asset.format || 'png'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    });
-    if (canceled || !filePath) {
-      return false;
-    }
-    await fs.copyFile(entry.asset.absolutePath, filePath);
-    return true;
-  });
-
-  ipcMain.handle('asset-viewer:convert', async (event, payload: { id: string; format: 'png' | 'jpeg' | 'webp' }) => {
-    const entry = getViewerEntryByToken(payload.id);
-    if (!entry) {
-      return false;
-    }
-    const targetExt = payload.format === 'jpeg' ? 'jpg' : payload.format;
-    const browserWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
-    const defaultName = `${path.parse(entry.asset.filename).name}.${targetExt}`;
-    const { canceled, filePath } = await dialog.showSaveDialog(browserWindow, {
-      defaultPath: defaultName,
-      filters: [
-        { name: `${payload.format.toUpperCase()} Image`, extensions: [targetExt] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    });
-    if (canceled || !filePath) {
-      return false;
-    }
-    try {
-      const image = await loadNativeImageForAsset(entry.asset);
-      let buffer: Buffer;
-      switch (payload.format) {
-        case 'jpeg':
-          buffer = image.toJPEG(92);
-          break;
-        case 'webp':
-          buffer = image.toWEBP(92);
-          break;
-        case 'png':
-        default:
-          buffer = image.toPNG();
-          break;
-      }
-      await fs.writeFile(filePath, buffer);
-      return true;
-    } catch (error) {
-      console.error('Convert failed', error);
-      dialog.showErrorBox('Convert Failed', String(error));
-      return false;
-    }
-  });
-
-  ipcMain.handle(
-    'asset-viewer:resize',
-    async (
-      _event,
-      payload: {
-        id: string;
-        width: number;
-        height: number;
-        lockAspect?: boolean;
-        data?: Uint8Array | ArrayBuffer;
-        format?: string;
-      },
-    ) => {
-    const entry = getViewerEntryByToken(payload.id);
-    if (!entry) {
-      return { success: false } as AssetUpdateResponse;
-    }
-    try {
-      const data = payload.data;
-      if (!data) {
-        return {
-          success: false,
-          error: 'No resized image data provided',
-        } as AssetUpdateResponse;
-      }
-
-      let buffer: Buffer;
-      if (data instanceof Uint8Array) {
-        buffer = Buffer.from(data);
-      } else if (data instanceof ArrayBuffer) {
-        buffer = Buffer.from(new Uint8Array(data));
-      } else {
-        return {
-          success: false,
-          error: 'Unsupported image payload format',
-        } as AssetUpdateResponse;
-      }
-
-      await fs.writeFile(entry.asset.absolutePath, buffer);
-
-      const updatedAsset = await workspaceManager.getAssetDetail(
-        entry.asset.workspace,
-        entry.asset.relativePath,
-      );
-      entry.asset = updatedAsset;
-
-      const updateEvent = {
-        workspace: updatedAsset.workspace,
-        relativePath: updatedAsset.relativePath,
-        updatedAt: updatedAsset.updatedAt,
-        sizeBytes: updatedAsset.sizeBytes,
-        version: Date.now(),
-      };
-      BrowserWindow.getAllWindows().forEach((window) => {
-        if (!window.isDestroyed()) {
-          window.webContents.send('workspace:asset-updated', updateEvent);
-        }
-      });
-
-      return {
-        success: true,
-        asset: updatedAsset,
-      } as AssetUpdateResponse;
-    } catch (error) {
-      console.error('Resize failed', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      } as AssetUpdateResponse;
-    }
-  },
-  );
-
-  ipcMain.handle(
-    'asset-viewer:crop',
-    async (
-      _event,
-      payload: {
-        id: string;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        data?: Uint8Array | ArrayBuffer;
-        format?: string;
-      },
-    ) => {
-      const entry = getViewerEntryByToken(payload.id);
-      if (!entry) {
-        return { success: false };
-      }
-      try {
-        const data = payload.data;
-        if (!data) {
-          return {
-            success: false,
-            error: 'No cropped image data provided',
-          } as AssetUpdateResponse;
-        }
-
-        let buffer: Buffer;
-        if (data instanceof Uint8Array) {
-          buffer = Buffer.from(data);
-        } else if (data instanceof ArrayBuffer) {
-          buffer = Buffer.from(new Uint8Array(data));
-        } else {
-          return {
-            success: false,
-            error: 'Unsupported image payload format',
-          } as AssetUpdateResponse;
-        }
-
-        await fs.writeFile(entry.asset.absolutePath, buffer);
-
-        const updatedAsset = await workspaceManager.getAssetDetail(
-          entry.asset.workspace,
-          entry.asset.relativePath,
-        );
-        entry.asset = updatedAsset;
-
-        const updateEvent = {
-          workspace: updatedAsset.workspace,
-          relativePath: updatedAsset.relativePath,
-          updatedAt: updatedAsset.updatedAt,
-          sizeBytes: updatedAsset.sizeBytes,
-          version: Date.now(),
-        };
-        BrowserWindow.getAllWindows().forEach((window) => {
-          if (!window.isDestroyed()) {
-            window.webContents.send('workspace:asset-updated', updateEvent);
-          }
-        });
-
-        return {
-          success: true,
-          asset: updatedAsset,
-        };
-      } catch (error) {
-        console.error('Crop failed', error);
-        dialog.showErrorBox('Crop Failed', String(error));
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
     },
-  );
+  ]);
 }
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'artboard',
-    privileges: {
-      secure: true,
-      standard: true,
-      bypassCSP: true,
-      corsEnabled: true,
-      supportFetchAPI: true,
-      stream: true,
-    },
-  },
-]);
 
 const resolveDistPath = (...segments: string[]) => {
   const appPath = app.getAppPath();
@@ -703,6 +383,7 @@ async function createWindow() {
     backgroundColor: '#333333',
     title: 'Artboard',
     autoHideMenuBar: true,
+    icon: path.join(app.getAppPath(), 'assets', 'icons', 'icons', 'png', '256x256.png'),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -788,10 +469,40 @@ function registerIpcHandlers() {
       workspaceManager.readAssetDataUrl(workspace, relativePath),
   );
   ipcMain.handle(
-    'workspace:open-asset-viewer',
-    (_event, payload: { workspace: string; relativePath: string }) =>
-      openAssetViewerWindow(payload),
+    'workspace:get-asset-detail',
+    (_event, workspace: string, relativePath: string) =>
+      workspaceManager.getAssetDetail(workspace, relativePath),
   );
+
+  ipcMain.handle(
+    'workspace:update-asset',
+    async (_event, workspace: string, relativePath: string, buffer: Uint8Array) => {
+      try {
+        // Get the existing asset path
+        const assetPath = await workspaceManager.resolveAssetPath(workspace, relativePath);
+
+        // Overwrite the existing file with the new buffer
+        await fs.writeFile(assetPath, Buffer.from(buffer));
+
+        // Get updated asset details
+        const updatedAsset = await workspaceManager.getAssetDetail(workspace, relativePath);
+
+        // Notify the renderer that the asset has been updated
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('workspace:asset-updated', {
+            workspace,
+            relativePath,
+          });
+        }
+
+        return updatedAsset;
+      } catch (error) {
+        console.error('Failed to update asset', error);
+        throw error;
+      }
+    },
+  );
+
   ipcMain.handle('app:open-external', (_event, url: string) => {
     if (typeof url === 'string' && url.trim()) {
       void shell.openExternal(url);
@@ -947,7 +658,7 @@ function isHttpUrl(value: string): boolean {
 app.whenReady().then(async () => {
   registerWorkspaceProtocol();
   registerIpcHandlers();
-  registerAssetViewerHandlers();
+
   await createWindow();
 
   app.on('activate', async () => {

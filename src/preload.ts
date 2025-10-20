@@ -89,8 +89,12 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       workspace,
       relativePath,
     ) as Promise<string>,
-  openAssetViewer: (payload: OpenAssetViewerPayload) =>
-    ipcRenderer.invoke('workspace:open-asset-viewer', payload) as Promise<void>,
+
+  getAssetDetail: (workspace: string, relativePath: string) =>
+    ipcRenderer.invoke('workspace:get-asset-detail', workspace, relativePath) as Promise<AssetDetail>,
+
+  updateAsset: (workspace: string, relativePath: string, buffer: Uint8Array) =>
+    ipcRenderer.invoke('workspace:update-asset', workspace, relativePath, buffer) as Promise<AssetDetail>,
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -106,34 +110,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('clipboard:read-assets') as Promise<AssetIngestRequest>,
 });
 
-contextBridge.exposeInMainWorld('assetViewerAPI', {
-  ready: () => {
-    ipcRenderer.send('asset-viewer:ready');
-  },
-  onAssetData: (listener: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-      listener(payload);
-    };
-    ipcRenderer.on('asset-viewer:data', handler);
-    return () => ipcRenderer.removeListener('asset-viewer:data', handler);
-  },
-  copyToClipboard: (payload: { id: string }) =>
-    ipcRenderer.invoke('asset-viewer:copy', payload) as Promise<boolean>,
-  saveAs: (payload: { id: string }) =>
-    ipcRenderer.invoke('asset-viewer:save', payload) as Promise<boolean>,
-  convert: (payload: { id: string; format: 'png' | 'jpeg' | 'webp' }) =>
-    ipcRenderer.invoke('asset-viewer:convert', payload) as Promise<boolean>,
-  resize: (
-    payload: {
-      id: string;
-      width: number;
-      height: number;
-      lockAspect?: boolean;
-      data: Uint8Array;
-      format: string;
-    },
-  ) =>
-    ipcRenderer.invoke('asset-viewer:resize', payload) as Promise<AssetUpdateResponse>,
-  crop: (payload: { id: string; x: number; y: number; width: number; height: number }) =>
-    ipcRenderer.invoke('asset-viewer:crop', payload) as Promise<AssetUpdateResponse>,
-});
+

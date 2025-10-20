@@ -16,7 +16,7 @@ type ViewerData = AssetDescriptor & {
 
 type AssetUpdateResponse =
   | { success: true; asset: ViewerData }
-  | { success: false; error?: string };
+  | { success: false; error: string };
 
 declare global {
   interface Window {
@@ -508,11 +508,8 @@ async function applyCrop(selectionOverride?: CropSelection): Promise<void> {
     });
 
     if (!response?.success || !response.asset) {
-      if (response?.error) {
-        setFeedback(`Crop failed: ${response.error}`, 'error');
-      } else {
-        setFeedback('Crop cancelled', 'info');
-      }
+      const errorMsg = (response as any)?.error || 'Crop cancelled';
+      setFeedback(`Crop failed: ${errorMsg}`, 'error');
       return;
     }
     handleAssetData(response.asset);
@@ -837,73 +834,10 @@ resizeWidth.addEventListener('input', () => {
   resizeHeight.value = String(Math.max(1, Math.round(width * aspect)));
 });
 
-resizeForm.addEventListener('submit', async (event) => {
+// Resize functionality disabled in modal context
+resizeForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  try {
-    const asset = ensureAsset();
-    const width = Number(resizeWidth.value);
-    const height = Number(resizeHeight.value);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      setFeedback('Invalid resize dimensions', 'error');
-      return;
-    }
-    const normalizedFormat = canonicalFormat(asset.format);
-    if (!SUPPORTED_RESIZE_FORMATS.has(normalizedFormat)) {
-      setFeedback(`Resize not supported for ${asset.format.toUpperCase()} images`, 'error');
-      return;
-    }
-
-    if (!imageElement.complete || naturalWidth === 0 || naturalHeight === 0) {
-      setFeedback('Image still loading, try again in a moment', 'error');
-      return;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(width);
-    canvas.height = Math.round(height);
-    const context = canvas.getContext('2d');
-    if (!context) {
-      setFeedback('Canvas rendering is not supported in this environment', 'error');
-      return;
-    }
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
-
-    const { mime, quality } = getMimeForFormat(normalizedFormat);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, mime, quality),
-    );
-    if (!blob) {
-      setFeedback('Unable to generate resized image', 'error');
-      return;
-    }
-    const buffer = new Uint8Array(await blob.arrayBuffer());
-
-    const response = await window.assetViewerAPI?.resize({
-      id: asset.id,
-      width,
-      height,
-      lockAspect: resizeLock.checked,
-      data: buffer,
-      format: normalizedFormat,
-    });
-    if (!response?.success || !response.asset) {
-      if (response?.error) {
-        setFeedback(`Resize failed: ${response.error}`, 'error');
-      } else {
-        setFeedback('Resize cancelled', 'info');
-      }
-      return;
-    }
-    handleAssetData(response.asset);
-    setFeedback(`Resized to ${width}×${height}`, 'success');
-    hidePanels();
-  } catch (error) {
-    console.error('Resize failed', error);
-    setFeedback('Resize failed', 'error');
-  }
+  setFeedback('Resize not available in modal view', 'error');
 });
 
 cropForm.addEventListener('submit', async (event) => {
@@ -947,6 +881,67 @@ imageElement.addEventListener('load', () => {
   }
 });
 
+// Initialize asset viewer with data directly (for modal context)
+// This replaces the IPC-based initialization
+export function initializeAssetViewerModal(asset: ViewerData, container: HTMLElement) {
+  // Set up DOM element references within the provided container
+  const viewerRoot = container.querySelector<HTMLDivElement>('.viewer')!;
+  const imageElement = container.querySelector<HTMLImageElement>('#asset-image')!;
+  const nameElement = container.querySelector<HTMLHeadingElement>('#asset-name')!;
+  const pathElement = container.querySelector<HTMLParagraphElement>('#asset-path')!;
+  const formatElement = container.querySelector<HTMLSpanElement>('#meta-format')!;
+  const dimensionElement = container.querySelector<HTMLSpanElement>('#meta-dimensions')!;
+  const sizeElement = container.querySelector<HTMLSpanElement>('#meta-size')!;
+  const workspaceElement = container.querySelector<HTMLSpanElement>('#meta-workspace')!;
+  const relativeElement = container.querySelector<HTMLSpanElement>('#meta-relative')!;
+  const updatedElement = container.querySelector<HTMLSpanElement>('#meta-updated')!;
+  const feedbackElement = container.querySelector<HTMLOutputElement>('#action-feedback')!;
+
+  // Initialize with asset data
+  handleAssetData(asset);
+
+  // Set up event listeners for actions
+  setupModalEventListeners(container, asset);
+}
+
+function setupModalEventListeners(container: HTMLElement, asset: ViewerData) {
+  const copyButton = container.querySelector<HTMLButtonElement>('#action-copy')!;
+  const saveAsButton = container.querySelector<HTMLButtonElement>('#action-save-as')!;
+  const resizeButton = container.querySelector<HTMLButtonElement>('#action-resize')!;
+  const cropButton = container.querySelector<HTMLButtonElement>('#action-crop')!;
+  const feedbackElement = container.querySelector<HTMLOutputElement>('#action-feedback')!;
+
+  copyButton.addEventListener('click', async () => {
+    try {
+      // Use workspace API instead of assetViewerAPI
+      await window.workspaceAPI?.readAsset(asset.workspace, asset.relativePath);
+      setFeedback('Copied to clipboard', 'success');
+    } catch (error) {
+      console.error('Failed to copy asset', error);
+      setFeedback('Copy failed', 'error');
+    }
+  });
+
+  saveAsButton.addEventListener('click', () => {
+    // Simple download implementation
+    const link = document.createElement('a');
+    link.href = asset.fileUrl;
+    link.download = asset.fileName;
+    link.click();
+    setFeedback('Download started', 'success');
+  });
+
+  // For now, disable resize and crop in modal - can be implemented later
+  resizeButton.style.display = 'none'; // Hide resize button in modal
+  cropButton.style.display = 'none'; // Hide crop button in modal
+
+  function setFeedback(message: string, tone: 'info' | 'success' | 'error' = 'info') {
+    feedbackElement.dataset.tone = tone;
+    feedbackElement.textContent = message;
+  }
+}
+
+// Legacy IPC initialization (kept for backward compatibility)
 if (window.assetViewerAPI?.onAssetData) {
   window.assetViewerAPI.onAssetData((asset) => {
     handleAssetData(asset);

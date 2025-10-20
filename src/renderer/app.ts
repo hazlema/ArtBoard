@@ -23,6 +23,12 @@ type AssetDescriptor = {
   path: string;
   absolutePath: string;
 };
+type AssetDetail = AssetDescriptor & {
+  sizeBytes: number;
+  createdAt?: string;
+  updatedAt?: string;
+  format: string;
+};
 type InlineAssetPayload = {
   name?: string;
   mimeType?: string;
@@ -71,6 +77,7 @@ declare global {
       ) => Promise<AssetIngestResult>;
       capture: (workspace: string) => Promise<AssetDescriptor | null>;
       readAsset: (workspace: string, relativePath: string) => Promise<string>;
+      getAssetDetail: (workspace: string, relativePath: string) => Promise<AssetDetail>;
       openAssetViewer: (payload: { workspace: string; relativePath: string }) => Promise<void>;
     };
     electronAPI: {
@@ -154,6 +161,12 @@ const referenceModal =
   document.querySelector<HTMLDialogElement>('#reference-modal')!;
 const referenceClose =
   document.querySelector<HTMLButtonElement>('#reference-close')!;
+const assetViewerModal =
+  document.querySelector<HTMLDialogElement>('#asset-viewer-modal')!;
+const assetViewerModalClose =
+  document.querySelector<HTMLButtonElement>('#asset-viewer-modal-close')!;
+const assetViewerModalBody =
+  document.querySelector<HTMLDivElement>('#asset-viewer-modal-body')!;
 const tabButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('.tab-btn'),
 );
@@ -492,6 +505,19 @@ function createBrowserWorkspaceAPI(): Window['workspaceAPI'] {
     },
     async readAsset() {
       return BROWSER_PLACEHOLDER_IMAGE;
+    },
+    async getAssetDetail(workspace: string, relativePath: string) {
+      console.info('workspaceAPI.getAssetDetail is unavailable in browser preview');
+      return {
+        workspace,
+        filename: relativePath.split('/').pop() || 'image',
+        relativePath,
+        fileUrl: BROWSER_PLACEHOLDER_IMAGE,
+        path: relativePath,
+        absolutePath: relativePath,
+        sizeBytes: 0,
+        format: 'png',
+      };
     },
     async openAssetViewer() {
       console.info('workspaceAPI.openAssetViewer is unavailable in browser preview');
@@ -1556,18 +1582,840 @@ function extractAssetMeta(object: FabricObject | undefined | null):
 
 let assetViewerOpening = false;
 
-function handleImageDoubleClick(event: TPointerEventInfo<MouseEvent>) {
-  const target = event.target as FabricObject | undefined;
-  const meta = extractAssetMeta(target);
-  if (!meta || assetViewerOpening) {
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '—';
+  }
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function initializeAssetViewerInModal(asset: AssetDetail) {
+  // This function will initialize the asset viewer functionality within the modal
+  // We'll adapt the asset-viewer.ts logic here
+
+  const viewerRoot = assetViewerModalBody.querySelector<HTMLDivElement>('.viewer')!;
+  const imageElement = assetViewerModalBody.querySelector<HTMLImageElement>('#asset-image')!;
+  const nameElement = assetViewerModalBody.querySelector<HTMLHeadingElement>('#asset-name')!;
+  const pathElement = assetViewerModalBody.querySelector<HTMLParagraphElement>('#asset-path')!;
+  const formatElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-format')!;
+  const dimensionElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-dimensions')!;
+  const sizeElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-size')!;
+  const workspaceElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-workspace')!;
+  const relativeElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-relative')!;
+  const updatedElement = assetViewerModalBody.querySelector<HTMLSpanElement>('#meta-updated')!;
+  const feedbackElement = assetViewerModalBody.querySelector<HTMLOutputElement>('#action-feedback')!;
+
+  // Get modal dialogs
+  const saveAsModal = assetViewerModalBody.querySelector<HTMLDialogElement>('#save-as-modal')!;
+  const resizeModal = assetViewerModalBody.querySelector<HTMLDialogElement>('#resize-modal')!;
+  const cropPanel = assetViewerModalBody.querySelector<HTMLDivElement>('#crop-panel')!;
+
+  // Get forms
+  const convertForm = assetViewerModalBody.querySelector<HTMLFormElement>('#convert-form')!;
+  const convertFormat = assetViewerModalBody.querySelector<HTMLSelectElement>('#convert-format')!;
+  const resizeForm = assetViewerModalBody.querySelector<HTMLFormElement>('#resize-form')!;
+  const resizeWidth = assetViewerModalBody.querySelector<HTMLInputElement>('#resize-width')!;
+  const resizeHeight = assetViewerModalBody.querySelector<HTMLInputElement>('#resize-height')!;
+  const resizeLock = assetViewerModalBody.querySelector<HTMLInputElement>('#resize-lock-aspect')!;
+  const cropForm = assetViewerModalBody.querySelector<HTMLFormElement>('#crop-form')!;
+  const cropX = assetViewerModalBody.querySelector<HTMLInputElement>('#crop-x')!;
+  const cropY = assetViewerModalBody.querySelector<HTMLInputElement>('#crop-y')!;
+  const cropWidth = assetViewerModalBody.querySelector<HTMLInputElement>('#crop-width')!;
+  const cropHeight = assetViewerModalBody.querySelector<HTMLInputElement>('#crop-height')!;
+  const cropApplyButton = assetViewerModalBody.querySelector<HTMLButtonElement>('#crop-apply')!;
+  const cropOverlay = assetViewerModalBody.querySelector<HTMLDivElement>('#crop-overlay')!;
+  const cropSelectionElement = assetViewerModalBody.querySelector<HTMLDivElement>('#crop-selection')!;
+  const cropSelectionLabel = assetViewerModalBody.querySelector<HTMLSpanElement>('#crop-selection-label')!;
+
+  // Crop state variables
+  let cropModeActive = false;
+  let activeSelection: { x: number; y: number; width: number; height: number } | null = null;
+  let cropDragState: any = null;
+  let cropPointerId: number | null = null;
+  let imageRect: DOMRect | null = null;
+  let overlayRect: DOMRect | null = null;
+  const MIN_CROP_SIZE = 2;
+
+  // Initialize with asset data
+  const assetData = asset as any; // Cast to any to access additional properties
+  viewerRoot.dataset.loading = 'false';
+  nameElement.textContent = assetData.filename;
+  pathElement.textContent = assetData.absolutePath;
+  formatElement.textContent = assetData.format?.toUpperCase() || '—';
+  sizeElement.textContent = formatBytes(assetData.sizeBytes || 0);
+  workspaceElement.textContent = assetData.workspace;
+  relativeElement.textContent = assetData.relativePath;
+  updatedElement.textContent = assetData.updatedAt ? new Date(assetData.updatedAt).toLocaleString() : '—';
+
+  // Load the image
+  const cacheToken = Date.now();
+  imageElement.src = `${assetData.fileUrl}?v=${cacheToken}`;
+
+  // Add event listeners for the modal asset viewer
+  const copyButton = assetViewerModalBody.querySelector<HTMLButtonElement>('#action-copy')!;
+  const saveAsButton = assetViewerModalBody.querySelector<HTMLButtonElement>('#action-save-as')!;
+  const resizeButton = assetViewerModalBody.querySelector<HTMLButtonElement>('#action-resize')!;
+  const cropButton = assetViewerModalBody.querySelector<HTMLButtonElement>('#action-crop')!;
+
+  // Helper function to set feedback
+  const setFeedback = (message: string, tone: 'info' | 'success' | 'error' = 'info') => {
+    feedbackElement.dataset.tone = tone;
+    feedbackElement.textContent = message;
+    setTimeout(() => {
+      feedbackElement.textContent = '';
+    }, 3000);
+  };
+
+  // Copy to clipboard handler
+  copyButton.addEventListener('click', async () => {
+    try {
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback('Image not loaded', 'error');
+        return;
+      }
+
+      // Use Canvas to copy the image
+      const canvas = document.createElement('canvas');
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setFeedback('Canvas not supported', 'error');
+        return;
+      }
+
+      ctx.drawImage(imageElement, 0, 0);
+
+      // Convert to blob and copy to clipboard
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback('Failed to create image data', 'error');
+          return;
+        }
+
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [blob.type]: blob
+            })
+          ]);
+          setFeedback('Copied to clipboard', 'success');
+        } catch (clipboardError) {
+          console.error('Clipboard write failed', clipboardError);
+          setFeedback('Copy failed - clipboard permission denied', 'error');
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error('Failed to copy asset', error);
+      setFeedback('Copy failed', 'error');
+    }
+  }, { once: false });
+
+  // Save As handler - open the format selection modal
+  saveAsButton.addEventListener('click', () => {
+    if (!saveAsModal.open) {
+      saveAsModal.showModal();
+    }
+    feedbackElement.textContent = '';
+  }, { once: false });
+
+  // Resize handler - open the resize modal
+  resizeButton.addEventListener('click', () => {
+    if (imageElement.naturalWidth && imageElement.naturalHeight) {
+      resizeWidth.value = String(imageElement.naturalWidth);
+      resizeHeight.value = String(imageElement.naturalHeight);
+    }
+    if (!resizeModal.open) {
+      resizeModal.showModal();
+    }
+    feedbackElement.textContent = '';
+  }, { once: false });
+
+  // Crop helper functions
+  const refreshCropMetrics = (): boolean => {
+    imageRect = imageElement.getBoundingClientRect();
+    overlayRect = cropOverlay.getBoundingClientRect();
+    return Boolean(
+      imageRect &&
+        overlayRect &&
+        imageRect.width > 0 &&
+        imageRect.height > 0 &&
+        overlayRect.width > 0 &&
+        overlayRect.height > 0
+    );
+  };
+
+  const naturalFromPointer = (event: PointerEvent, allowOutside = false): { x: number; y: number } | null => {
+    if (!imageRect || imageRect.width === 0 || imageRect.height === 0) {
+      return null;
+    }
+    if (!imageElement.naturalWidth || !imageElement.naturalHeight) {
+      return null;
+    }
+    if (
+      !allowOutside &&
+      (event.clientX < imageRect.left ||
+        event.clientX > imageRect.right ||
+        event.clientY < imageRect.top ||
+        event.clientY > imageRect.bottom)
+    ) {
+      return null;
+    }
+    const displayX = Math.max(0, Math.min(event.clientX - imageRect.left, imageRect.width));
+    const displayY = Math.max(0, Math.min(event.clientY - imageRect.top, imageRect.height));
+    const naturalX = (displayX / imageRect.width) * imageElement.naturalWidth;
+    const naturalY = (displayY / imageRect.height) * imageElement.naturalHeight;
+    return {
+      x: Math.max(0, Math.min(naturalX, imageElement.naturalWidth)),
+      y: Math.max(0, Math.min(naturalY, imageElement.naturalHeight)),
+    };
+  };
+
+  const selectionToDisplay = (selection: { x: number; y: number; width: number; height: number }): { left: number; top: number; width: number; height: number } | null => {
+    if (!imageRect || !overlayRect || !imageElement.naturalWidth || !imageElement.naturalHeight) {
+      return null;
+    }
+    const scaleX = imageRect.width / imageElement.naturalWidth;
+    const scaleY = imageRect.height / imageElement.naturalHeight;
+    const offsetX = imageRect.left - overlayRect.left;
+    const offsetY = imageRect.top - overlayRect.top;
+    return {
+      left: offsetX + selection.x * scaleX,
+      top: offsetY + selection.y * scaleY,
+      width: Math.max(selection.width * scaleX, 1),
+      height: Math.max(selection.height * scaleY, 1),
+    };
+  };
+
+  const renderSelection = (selection: { x: number; y: number; width: number; height: number } | null): void => {
+    activeSelection = selection;
+    if (!cropModeActive) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = 'false';
+      return;
+    }
+    if (!selection) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = 'false';
+      if (cropX && cropY && cropWidth && cropHeight) {
+        cropX.value = '0';
+        cropY.value = '0';
+        cropWidth.value = imageElement.naturalWidth ? String(Math.round(imageElement.naturalWidth)) : '0';
+        cropHeight.value = imageElement.naturalHeight ? String(Math.round(imageElement.naturalHeight)) : '0';
+      }
+      return;
+    }
+    if (!refreshCropMetrics()) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = 'false';
+      return;
+    }
+    const display = selectionToDisplay(selection);
+    if (!display) {
+      cropSelectionElement.hidden = true;
+      cropOverlay.dataset.hasSelection = 'false';
+      return;
+    }
+    cropSelectionElement.hidden = false;
+    cropOverlay.dataset.hasSelection = 'true';
+    cropSelectionElement.style.transform = `translate(${display.left}px, ${display.top}px)`;
+    cropSelectionElement.style.width = `${display.width}px`;
+    cropSelectionElement.style.height = `${display.height}px`;
+    cropSelectionLabel.textContent = `${Math.round(selection.width)} × ${Math.round(selection.height)} px`;
+    if (cropX && cropY && cropWidth && cropHeight) {
+      cropX.value = String(Math.round(selection.x));
+      cropY.value = String(Math.round(selection.y));
+      cropWidth.value = String(Math.round(selection.width));
+      cropHeight.value = String(Math.round(selection.height));
+    }
+  };
+
+  const selectionFromPoints = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number; width: number; height: number } => {
+    const left = Math.min(a.x, b.x);
+    const top = Math.min(a.y, b.y);
+    const right = Math.max(a.x, b.x);
+    const bottom = Math.max(a.y, b.y);
+    const width = Math.max(right - left, MIN_CROP_SIZE);
+    const height = Math.max(bottom - top, MIN_CROP_SIZE);
+    return { x: left, y: top, width, height };
+  };
+
+  const enterCropMode = (): void => {
+    if (!imageElement.naturalWidth || !imageElement.naturalHeight) {
+      setFeedback('Image not ready for cropping', 'error');
+      return;
+    }
+    cropModeActive = true;
+    cropButton.textContent = 'End Crop';
+    cropButton.classList.add('is-active');
+    cropButton.dataset.tone = 'alert';
+    closeModal(saveAsModal);
+    closeModal(resizeModal);
+    cropOverlay.hidden = false;
+    cropOverlay.dataset.active = 'true';
+    cropOverlay.setAttribute('aria-hidden', 'false');
+    cropSelectionElement.hidden = !activeSelection;
+    cropPanel.classList.remove('hidden');
+    setFeedback('Drag on the image to select the crop area', 'info');
+    requestAnimationFrame(() => {
+      refreshCropMetrics();
+      renderSelection(activeSelection);
+    });
+  };
+
+  const exitCropMode = (options?: { resetSelection?: boolean }): void => {
+    if (options?.resetSelection) {
+      activeSelection = null;
+    }
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropDragState = null;
+    cropOverlay.classList.remove('is-dragging');
+    cropModeActive = false;
+    cropButton.textContent = 'Crop Selection…';
+    cropButton.classList.remove('is-active');
+    cropButton.removeAttribute('data-tone');
+    cropOverlay.dataset.active = 'false';
+    cropOverlay.dataset.hasSelection = 'false';
+    cropOverlay.hidden = true;
+    cropOverlay.setAttribute('aria-hidden', 'true');
+    cropSelectionElement.hidden = true;
+    cropPanel.classList.add('hidden');
+    renderSelection(activeSelection);
+  };
+
+  const closeModal = (dialog: HTMLDialogElement) => {
+    if (dialog.open) {
+      dialog.close();
+    }
+  };
+
+  // Crop handler - toggle crop mode
+  cropButton.addEventListener('click', () => {
+    if (cropModeActive) {
+      void applyCrop();
+    } else {
+      enterCropMode();
+    }
+  }, { once: false });
+
+  // Crop overlay pointer events
+  cropOverlay.addEventListener('pointerdown', (event: PointerEvent) => {
+    if (!cropModeActive) return;
+    if (!refreshCropMetrics()) return;
+
+    const pointer = naturalFromPointer(event);
+    if (!pointer) return;
+
+    event.preventDefault();
+    cropPointerId = event.pointerId;
+    cropOverlay.setPointerCapture(event.pointerId);
+    cropOverlay.classList.add('is-dragging');
+
+    // Start creating a new selection
+    cropDragState = {
+      mode: 'create',
+      origin: pointer,
+      pointerId: event.pointerId,
+    };
+    renderSelection({ x: pointer.x, y: pointer.y, width: MIN_CROP_SIZE, height: MIN_CROP_SIZE });
+  });
+
+  cropOverlay.addEventListener('pointermove', (event: PointerEvent) => {
+    if (!cropModeActive || !cropDragState) return;
+
+    const pointer = naturalFromPointer(event, true);
+    if (!pointer) return;
+
+    if (cropDragState.mode === 'create') {
+      renderSelection(selectionFromPoints(cropDragState.origin, pointer));
+    }
+  });
+
+  cropOverlay.addEventListener('pointerup', (event: PointerEvent) => {
+    if (!cropModeActive) return;
+
+    const pointer = naturalFromPointer(event, true);
+    if (cropDragState && cropDragState.mode === 'create' && pointer) {
+      renderSelection(selectionFromPoints(cropDragState.origin, pointer));
+    }
+
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropOverlay.classList.remove('is-dragging');
+    cropDragState = null;
+  });
+
+  cropOverlay.addEventListener('pointercancel', () => {
+    if (cropPointerId !== null && cropOverlay.hasPointerCapture(cropPointerId)) {
+      cropOverlay.releasePointerCapture(cropPointerId);
+    }
+    cropPointerId = null;
+    cropOverlay.classList.remove('is-dragging');
+    cropDragState = null;
+  });
+
+  // Crop apply handler
+  const applyCrop = async () => {
+    try {
+      const x = Number(cropX.value);
+      const y = Number(cropY.value);
+      const width = Number(cropWidth.value);
+      const height = Number(cropHeight.value);
+
+      if (!width || !height || width < 1 || height < 1) {
+        setFeedback('Invalid crop dimensions', 'error');
+        return;
+      }
+
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback('Image not loaded', 'error');
+        return;
+      }
+
+      // Validate crop bounds
+      if (x < 0 || y < 0 || x + width > imageElement.naturalWidth || y + height > imageElement.naturalHeight) {
+        setFeedback('Crop area out of bounds', 'error');
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setFeedback('Canvas not supported', 'error');
+        return;
+      }
+
+      // Draw the cropped portion
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(imageElement, x, y, width, height, 0, 0, width, height);
+
+      // Determine output format
+      const originalFormat = assetData.format?.toLowerCase() || 'png';
+      const mimeType = originalFormat === 'jpg' || originalFormat === 'jpeg' ? 'image/jpeg' :
+                       originalFormat === 'webp' ? 'image/webp' : 'image/png';
+      const quality = mimeType === 'image/png' ? undefined : 0.92;
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback('Crop failed', 'error');
+          return;
+        }
+
+        try {
+          // Update the existing asset in the workspace
+          const buffer = new Uint8Array(await blob.arrayBuffer());
+          await window.workspaceAPI.updateAsset(assetData.workspace, assetData.relativePath, buffer);
+
+          setFeedback('Image cropped successfully', 'success');
+
+          // Exit crop mode completely
+          exitCropMode({ resetSelection: true });
+
+          // Reload the image in the viewer to show the updated version
+          const cacheToken = Date.now();
+          imageElement.src = `${assetData.fileUrl}?v=${cacheToken}`;
+        } catch (error) {
+          console.error('Failed to update asset', error);
+          setFeedback('Failed to save cropped image', 'error');
+        }
+      }, mimeType, quality);
+    } catch (error) {
+      console.error('Crop failed', error);
+      setFeedback('Crop failed', 'error');
+    }
+  };
+
+  cropApplyButton.addEventListener('click', () => {
+    void applyCrop();
+  });
+
+  cropForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void applyCrop();
+  });
+
+  // Close crop panel buttons
+  assetViewerModalBody.querySelectorAll<HTMLButtonElement>('[data-close-panel="crop"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      cropPanel.classList.add('hidden');
+      setFeedback('', 'info');
+    });
+  });
+
+  // Handle image load to get dimensions
+  imageElement.addEventListener('load', () => {
+    dimensionElement.textContent = imageElement.naturalWidth && imageElement.naturalHeight
+      ? `${imageElement.naturalWidth} × ${imageElement.naturalHeight}`
+      : '—';
+  });
+
+  // Save As modal form submission - actually convert the image format
+  convertForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const format = convertFormat.value;
+
+    try {
+      // Use Canvas API to convert the image
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback('Image not loaded', 'error');
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setFeedback('Canvas not supported', 'error');
+        return;
+      }
+
+      ctx.drawImage(imageElement, 0, 0);
+
+      // Convert to the selected format
+      const mimeType = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp';
+      const quality = format === 'png' ? undefined : 0.92;
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setFeedback('Conversion failed', 'error');
+          return;
+        }
+
+        // Download the converted image
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const ext = format === 'jpeg' ? 'jpg' : format;
+        const baseName = assetData.filename.replace(/\.[^/.]+$/, '');
+        link.download = `${baseName}.${ext}`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        setFeedback(`Saved as ${format.toUpperCase()}`, 'success');
+        saveAsModal.close();
+      }, mimeType, quality);
+    } catch (error) {
+      console.error('Format conversion failed', error);
+      setFeedback('Conversion failed', 'error');
+    }
+  });
+
+  // Resize modal form submission - actually resize the image
+  resizeForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    try {
+      const width = Number(resizeWidth.value);
+      const height = Number(resizeHeight.value);
+
+      if (!width || !height || width < 1 || height < 1) {
+        setFeedback('Invalid dimensions', 'error');
+        return;
+      }
+
+      if (!imageElement.complete || !imageElement.naturalWidth) {
+        setFeedback('Image not loaded', 'error');
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setFeedback('Canvas not supported', 'error');
+        return;
+      }
+
+      // Use high-quality image smoothing
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(imageElement, 0, 0, width, height);
+
+      // Determine output format based on original file
+      const originalFormat = assetData.format?.toLowerCase() || 'png';
+      const mimeType = originalFormat === 'jpg' || originalFormat === 'jpeg' ? 'image/jpeg' :
+                       originalFormat === 'webp' ? 'image/webp' : 'image/png';
+      const quality = mimeType === 'image/png' ? undefined : 0.92;
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setFeedback('Resize failed', 'error');
+          return;
+        }
+
+        try {
+          // Update the existing asset in the workspace
+          const buffer = new Uint8Array(await blob.arrayBuffer());
+          await window.workspaceAPI.updateAsset(assetData.workspace, assetData.relativePath, buffer);
+
+          setFeedback(`Resized to ${width}×${height}`, 'success');
+          resizeModal.close();
+
+          // Reload the image in the viewer to show the updated version
+          const cacheToken = Date.now();
+          imageElement.src = `${assetData.fileUrl}?v=${cacheToken}`;
+        } catch (error) {
+          console.error('Failed to update asset', error);
+          setFeedback('Failed to save resized image', 'error');
+        }
+      }, mimeType, quality);
+    } catch (error) {
+      console.error('Resize failed', error);
+      setFeedback('Resize failed', 'error');
+    }
+  });
+
+  // Resize lock aspect ratio handler
+  resizeLock.addEventListener('change', () => {
+    if (resizeLock.checked && imageElement.naturalWidth && imageElement.naturalHeight) {
+      const width = Number(resizeWidth.value || imageElement.naturalWidth);
+      const aspect = imageElement.naturalHeight / imageElement.naturalWidth;
+      resizeHeight.value = String(Math.round(width * aspect));
+    }
+  });
+
+  resizeWidth.addEventListener('input', () => {
+    if (resizeLock.checked && imageElement.naturalWidth && imageElement.naturalHeight) {
+      const width = Number(resizeWidth.value || imageElement.naturalWidth);
+      const aspect = imageElement.naturalHeight / imageElement.naturalWidth;
+      resizeHeight.value = String(Math.max(1, Math.round(width * aspect)));
+    }
+  });
+
+  // Close modal buttons
+  assetViewerModalBody.querySelectorAll<HTMLButtonElement>('[data-close-modal]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.closeModal;
+      if (target === 'save-as') {
+        saveAsModal.close();
+      } else if (target === 'resize') {
+        resizeModal.close();
+      }
+      feedbackElement.textContent = '';
+    });
+  });
+
+  // Close modals on cancel event
+  saveAsModal.addEventListener('cancel', () => {
+    feedbackElement.textContent = '';
+  });
+
+  resizeModal.addEventListener('cancel', () => {
+    feedbackElement.textContent = '';
+  });
+}
+
+function openAssetViewerModal(asset: AssetDetail) {
+  // Prevent opening if already open
+  if (assetViewerModal.open) {
+    console.warn('Asset viewer modal is already open');
     return;
   }
 
+  // Clear previous content
+  assetViewerModalBody.innerHTML = '';
+
+  // Create asset viewer content
+  const viewerElement = document.createElement('div');
+  viewerElement.className = 'viewer';
+  viewerElement.innerHTML = `
+    <main class="viewer__preview">
+      <div class="viewer__image-frame">
+        <img id="asset-image" alt="" />
+        <div
+          id="crop-overlay"
+          class="crop-overlay"
+          aria-hidden="true"
+          hidden
+        >
+          <div
+            id="crop-selection"
+            class="crop-overlay__selection"
+            hidden
+          >
+            <span
+              id="crop-selection-label"
+              class="crop-overlay__label"
+            >
+            </span>
+            <div class="crop-overlay__handle crop-overlay__handle--nw" data-handle="nw"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--n" data-handle="n"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--ne" data-handle="ne"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--e" data-handle="e"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--se" data-handle="se"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--s" data-handle="s"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--sw" data-handle="sw"></div>
+            <div class="crop-overlay__handle crop-overlay__handle--w" data-handle="w"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <aside class="viewer__details">
+      <header class="viewer__header">
+        <h1 id="asset-name">Asset</h1>
+        <p id="asset-path" class="viewer__subheading"></p>
+      </header>
+      <section class="viewer__meta">
+        <h2>Details</h2>
+        <dl>
+          <div>
+            <dt>Format</dt>
+            <dd id="meta-format">—</dd>
+          </div>
+          <div>
+            <dt>Dimensions</dt>
+            <dd id="meta-dimensions">—</dd>
+          </div>
+          <div>
+            <dt>File Size</dt>
+            <dd id="meta-size">—</dd>
+          </div>
+          <div>
+            <dt>Workspace</dt>
+            <dd id="meta-workspace">—</dd>
+          </div>
+          <div>
+            <dt>Relative Path</dt>
+            <dd id="meta-relative">—</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd id="meta-updated">—</dd>
+          </div>
+        </dl>
+      </section>
+      <section class="viewer__actions">
+        <button id="action-copy" type="button">Copy to Clipboard</button>
+        <button id="action-save-as" type="button">Save As…</button>
+        <button id="action-resize" type="button">Resize…</button>
+        <button id="action-crop" type="button">Crop Selection…</button>
+        <output id="action-feedback" role="status" aria-live="polite"></output>
+      </section>
+      <section id="crop-panel" class="viewer__panel hidden">
+        <h3>Crop</h3>
+        <p class="crop-panel__intro">
+          Drag on the image to select the area to keep. Adjust using the handles, then apply the crop.
+        </p>
+        <div class="crop-panel__actions">
+          <button id="crop-apply" type="button">Apply Crop</button>
+          <button type="button" class="secondary" data-close-panel="crop">
+            Cancel
+          </button>
+        </div>
+        <details class="crop-panel__details">
+          <summary>Precise input</summary>
+          <form id="crop-form">
+            <div class="fields">
+              <label>
+                X
+                <input id="crop-x" type="number" min="0" value="0" required />
+              </label>
+              <label>
+                Y
+                <input id="crop-y" type="number" min="0" value="0" required />
+              </label>
+            </div>
+            <div class="fields">
+              <label>
+                Width
+                <input id="crop-width" type="number" min="1" required />
+              </label>
+              <label>
+                Height
+                <input id="crop-height" type="number" min="1" required />
+              </label>
+            </div>
+            <button type="submit">Apply Precise Crop</button>
+          </form>
+        </details>
+      </section>
+    </aside>
+    <dialog id="save-as-modal" class="viewer-modal">
+      <form id="convert-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Save As</h3>
+        <label>
+          Target Format
+          <select id="convert-format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="webp">WebP</option>
+          </select>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="save-as">
+            Cancel
+          </button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="resize-modal" class="viewer-modal">
+      <form id="resize-form" class="viewer-modal__form viewer__panel" method="dialog">
+        <h3>Resize</h3>
+        <div class="fields">
+          <label>
+            Width (px)
+            <input id="resize-width" type="number" min="1" required />
+          </label>
+          <label>
+            Height (px)
+            <input id="resize-height" type="number" min="1" required />
+          </label>
+        </div>
+        <label class="checkbox">
+          <input id="resize-lock-aspect" type="checkbox" checked />
+          <span>Lock aspect ratio</span>
+        </label>
+        <div class="viewer-modal__actions">
+          <button type="button" class="secondary" data-close-modal="resize">
+            Cancel
+          </button>
+          <button type="submit">Resize &amp; Save</button>
+        </div>
+      </form>
+    </dialog>
+  `;
+
+  assetViewerModalBody.appendChild(viewerElement);
+
+  // Initialize asset viewer with the asset data
+  setTimeout(() => {
+    initializeAssetViewerInModal(asset);
+  }, 0);
+
+  assetViewerModal.showModal();
+}
+
+function handleImageDoubleClick(event: TPointerEventInfo<MouseEvent>) {
+  const meta = extractAssetMeta(event.target);
+  if (!meta || assetViewerOpening) {
+    return;
+}
+
   assetViewerOpening = true;
   void window.workspaceAPI
-    .openAssetViewer({ workspace: meta.workspace, relativePath: meta.relativePath })
+    .getAssetDetail(meta.workspace, meta.relativePath)
+    .then((asset) => {
+      openAssetViewerModal(asset);
+    })
     .catch((error) => {
-      console.error('Failed to open asset viewer', error);
+      console.error('Failed to get asset details', error);
     })
     .finally(() => {
       // Reset the flag after a short delay to allow subsequent opens
@@ -2885,6 +3733,17 @@ function wireEvents() {
     settingsModal.close();
   });
 
+  // Handle external links in settings/about modal
+  document.querySelectorAll<HTMLAnchorElement>('.about-link').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const href = link.getAttribute('href');
+      if (href && window.electronAPI?.openExternal) {
+        void window.electronAPI.openExternal(href);
+      }
+    });
+  });
+
   openReferenceButton.addEventListener('click', () => {
     closeActiveDropdown();
     referenceModal.showModal();
@@ -2899,6 +3758,23 @@ function wireEvents() {
       referenceModal.close();
     }
   });
+
+  assetViewerModalClose.addEventListener('click', () => {
+    closeAssetViewerModal();
+  });
+
+  assetViewerModal.addEventListener('click', (event) => {
+    if (event.target === assetViewerModal) {
+      closeAssetViewerModal();
+    }
+  });
+
+function closeAssetViewerModal() {
+  assetViewerModal.close();
+  assetViewerModalBody.innerHTML = '';
+}
+
+
 
   tabButtons.forEach((button) => {
     button.addEventListener('click', () => {
