@@ -468,11 +468,23 @@ function registerIpcHandlers() {
     (_event, workspace: string, relativePath: string) =>
       workspaceManager.readAssetDataUrl(workspace, relativePath),
   );
-  ipcMain.handle(
-    'workspace:get-asset-detail',
-    (_event, workspace: string, relativePath: string) =>
-      workspaceManager.getAssetDetail(workspace, relativePath),
-  );
+   ipcMain.handle(
+     'workspace:get-asset-detail',
+     (_event, workspace: string, relativePath: string) =>
+       workspaceManager.getAssetDetail(workspace, relativePath),
+   );
+   ipcMain.handle(
+     'workspace:asset-exists',
+     async (_event, workspace: string, relativePath: string) => {
+       try {
+         const assetPath = await workspaceManager.resolveAssetPath(workspace, relativePath);
+         await fs.access(assetPath);
+         return true;
+       } catch {
+         return false;
+       }
+     },
+   );
 
   ipcMain.handle(
     'workspace:update-asset',

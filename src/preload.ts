@@ -90,8 +90,11 @@ contextBridge.exposeInMainWorld('workspaceAPI', {
       relativePath,
     ) as Promise<string>,
 
-  getAssetDetail: (workspace: string, relativePath: string) =>
-    ipcRenderer.invoke('workspace:get-asset-detail', workspace, relativePath) as Promise<AssetDetail>,
+   getAssetDetail: (workspace: string, relativePath: string) =>
+     ipcRenderer.invoke('workspace:get-asset-detail', workspace, relativePath) as Promise<AssetDetail>,
+
+   assetExists: (workspace: string, relativePath: string) =>
+     ipcRenderer.invoke('workspace:asset-exists', workspace, relativePath) as Promise<boolean>,
 
   updateAsset: (workspace: string, relativePath: string, buffer: Uint8Array) =>
     ipcRenderer.invoke('workspace:update-asset', workspace, relativePath, buffer) as Promise<AssetDetail>,

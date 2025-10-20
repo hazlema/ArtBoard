@@ -9054,6 +9054,41 @@ function persistActivePageState(options) {
   pageStates[activePageId] = state;
   return state;
 }
+async function filterPageStateForMissingAssets(state) {
+  if (!state || !Array.isArray(state.objects)) {
+    return state;
+  }
+  const filteredObjects = [];
+  for (const obj of state.objects) {
+    if (obj && typeof obj === "object" && "src" in obj && typeof obj.src === "string") {
+      const src = obj.src;
+      if (src.startsWith("artboard://")) {
+        try {
+          const url = new URL(src);
+          const workspace = decodeURIComponent(url.hostname);
+          const segments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+          const relativePath = segments.join("/");
+          const exists = await window.workspaceAPI.assetExists(workspace, relativePath);
+          if (exists) {
+            filteredObjects.push(obj);
+          } else {
+            console.warn("Filtering out object with missing asset:", src);
+          }
+        } catch (error) {
+          console.warn("Error checking asset existence for:", src, error);
+        }
+      } else {
+        filteredObjects.push(obj);
+      }
+    } else {
+      filteredObjects.push(obj);
+    }
+  }
+  return {
+    ...state,
+    objects: filteredObjects
+  };
+}
 async function loadPageState(pageId) {
   if (!pageId) {
     fabricCanvas.clear();
@@ -9063,9 +9098,10 @@ async function loadPageState(pageId) {
   }
   suppressSaves = true;
   try {
-    const stored = pageStates[pageId];
+    let stored = pageStates[pageId];
     console.log("Loading page state for", pageId, "viewportTransform in stored:", stored?.viewportTransform);
     if (stored && Array.isArray(stored.objects)) {
+      stored = await filterPageStateForMissingAssets(stored);
       await fabricCanvas.loadFromJSON(stored);
     } else {
       fabricCanvas.clear();
@@ -10009,8 +10045,12 @@ async function loadWorkspace(workspace) {
   suppressSaves = true;
   const rawState = await window.workspaceAPI.load(workspace);
   const parsed = parseWorkspaceDocument(rawState);
+  const filteredPageStates = {};
+  for (const [pageId, state] of Object.entries(parsed.pageStates)) {
+    filteredPageStates[pageId] = await filterPageStateForMissingAssets(state);
+  }
   pages = parsed.pages;
-  pageStates = parsed.pageStates;
+  pageStates = filteredPageStates;
   nextPageNumber = parsed.nextPageNumber;
   activePageId = null;
   renderPages();
@@ -11261,7 +11301,7 @@ function wireEvents() {
   });
 }
 async function bootstrap() {
-  const versionShort = "1.2.0".split(".").slice(0, 2).join(".");
+  const versionShort = "1.3.0".split(".").slice(0, 2).join(".");
   appNameElement.textContent = `ArtBoard v${versionShort}`;
   const aboutVersionElement = document.getElementById("about-version");
   if (aboutVersionElement) {

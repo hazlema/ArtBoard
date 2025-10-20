@@ -1342,6 +1342,53 @@ function persistActivePageState(options?: { force?: boolean }): CanvasState | nu
   return state;
 }
 
+async function filterPageStateForMissingAssets(state: CanvasState): Promise<CanvasState> {
+  if (!state || !Array.isArray(state.objects)) {
+    return state;
+  }
+
+  const filteredObjects = [];
+  for (const obj of state.objects) {
+    if (obj && typeof obj === 'object' && 'src' in obj && typeof obj.src === 'string') {
+      const src = obj.src as string;
+      if (src.startsWith('artboard://')) {
+        try {
+          // Extract workspace and relative path from artboard:// URL
+          const url = new URL(src);
+          const workspace = decodeURIComponent(url.hostname);
+          const segments = url.pathname
+            .split('/')
+            .filter(Boolean)
+            .map((segment) => decodeURIComponent(segment));
+          const relativePath = segments.join('/');
+
+          // Check if the asset exists
+          const exists = await window.workspaceAPI.assetExists(workspace, relativePath);
+          if (exists) {
+            filteredObjects.push(obj);
+          } else {
+            console.warn('Filtering out object with missing asset:', src);
+          }
+        } catch (error) {
+          console.warn('Error checking asset existence for:', src, error);
+          // If we can't check, assume it doesn't exist to be safe
+        }
+      } else {
+        // Non-artboard URLs are assumed to be valid
+        filteredObjects.push(obj);
+      }
+    } else {
+      // Objects without src are kept
+      filteredObjects.push(obj);
+    }
+  }
+
+  return {
+    ...state,
+    objects: filteredObjects,
+  };
+}
+
 async function loadPageState(pageId: string | null): Promise<void> {
   if (!pageId) {
     fabricCanvas.clear();
@@ -1352,9 +1399,11 @@ async function loadPageState(pageId: string | null): Promise<void> {
 
   suppressSaves = true;
   try {
-    const stored = pageStates[pageId];
+    let stored = pageStates[pageId];
     console.log('Loading page state for', pageId, 'viewportTransform in stored:', stored?.viewportTransform);
     if (stored && Array.isArray(stored.objects)) {
+      // Filter out objects with missing assets before loading
+      stored = await filterPageStateForMissingAssets(stored);
       await fabricCanvas.loadFromJSON(stored);
     } else {
       fabricCanvas.clear();
@@ -2495,8 +2544,14 @@ async function loadWorkspace(workspace: string) {
   const rawState = (await window.workspaceAPI.load(workspace)) as WorkspaceSerializedState | null;
   const parsed = parseWorkspaceDocument(rawState);
 
+  // Filter out objects with missing assets from all page states
+  const filteredPageStates: Record<string, CanvasState> = {};
+  for (const [pageId, state] of Object.entries(parsed.pageStates)) {
+    filteredPageStates[pageId] = await filterPageStateForMissingAssets(state);
+  }
+
   pages = parsed.pages;
-  pageStates = parsed.pageStates;
+  pageStates = filteredPageStates;
   nextPageNumber = parsed.nextPageNumber;
   activePageId = null;
 
